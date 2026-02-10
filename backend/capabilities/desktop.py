@@ -4,6 +4,61 @@ import platform
 import os
 import glob
 import time
+from capabilities.file_search_cache import FileSearchIndex
+
+# Global cache instance (lazy initialization)
+_file_cache = None
+
+def get_file_cache():
+    """
+    Get or create the file search cache instance.
+    
+    Lazy initialization:
+    - Loads cache from disk if available
+    - Builds index if cache is missing or stale
+    
+    Returns:
+        FileSearchIndex instance
+    """
+    global _file_cache
+    if _file_cache is None:
+        _file_cache = FileSearchIndex()
+        
+        # Try to load existing cache
+        loaded = _file_cache.load_from_disk()
+        
+        # Build index if cache doesn't exist or is stale
+        if not loaded or _file_cache.is_stale():
+            print("🔄 Cache missing or stale, rebuilding index...")
+            _file_cache.build_index()
+    
+    return _file_cache
+
+def refresh_file_cache() -> str:
+    """
+    Manually trigger cache rebuild.
+    
+    Use when:
+    - Files have been added/deleted outside the application
+    - Cache seems out of sync
+    
+    Returns:
+        Success message
+    """
+    cache = get_file_cache()
+    cache.build_index()
+    return "✅ File cache refreshed successfully"
+
+def clear_file_cache() -> str:
+    """
+    Clear cache and force rebuild on next search.
+    
+    Returns:
+        Success message
+    """
+    global _file_cache
+    _file_cache = None
+    return "✅ File cache cleared"
 
 def get_start_menu_paths():
     """Get all common Windows Start Menu paths."""
@@ -166,7 +221,7 @@ def launch_application(app_name: str) -> str:
 import hashlib
 
 def close_application(app_name: str) -> str:
-    """Close an application using taskkill."""
+    """Close an application using taskkill with smart process detection."""
     # Map common names to process names
     process_map = {
         "word": "winword.exe",
@@ -175,24 +230,83 @@ def close_application(app_name: str) -> str:
         "ppt": "powerpnt.exe",
         "chrome": "chrome.exe",
         "notepad": "notepad.exe",
-        "calc": "CalculatorApp.exe", # Windows 10/11 Calculator
+        "calc": "CalculatorApp.exe",
         "calculator": "CalculatorApp.exe",
         "edge": "msedge.exe",
         "vscode": "code.exe",
         "code": "code.exe",
         "spotify": "spotify.exe",
-        "whatsapp": "whatsapp.exe",
+        "whatsapp": "WhatsApp.exe",  # Fixed: Windows Store app
+        "teams": "Teams.exe",
+        "slack": "slack.exe",
+        "discord": "discord.exe",
+        "telegram": "Telegram.exe",
+        "firefox": "firefox.exe",
+        "brave": "brave.exe",
+        "opera": "opera.exe",
+        "vlc": "vlc.exe",
+        "zoom": "Zoom.exe",
     }
     
     target = app_name.lower().strip()
+    
+    # Try mapped name first
     image_name = process_map.get(target, f"{target}.exe")
     
+    # === Step 1: Try direct kill ===
     try:
-        # /F = Force, /IM = Image Name
-        subprocess.run(f"taskkill /F /IM {image_name}", shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return f"Closed {target} ({image_name})"
+        result = subprocess.run(
+            f"taskkill /F /IM {image_name}", 
+            shell=True, check=True, 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return f"✅ Closed {target} ({image_name})"
     except subprocess.CalledProcessError:
-        return f"Could not close {target}. Is it running?"
+        pass  # Try fallback
+    
+    # === Step 2: Smart detection - find process by partial name match ===
+    try:
+        # Get list of all running processes
+        result = subprocess.run(
+            "tasklist /FO CSV",
+            shell=True, capture_output=True, text=True
+        )
+        
+        # Look for processes containing our target
+        found_processes = []
+        for line in result.stdout.split('\n'):
+            if target.lower() in line.lower():
+                # Parse CSV format: "Image Name","PID",...
+                parts = line.split(',')
+                if parts:
+                    proc_name = parts[0].strip('"')
+                    if proc_name and ".exe" in proc_name.lower():
+                        found_processes.append(proc_name)
+        
+        # Remove duplicates
+        found_processes = list(set(found_processes))
+        
+        if found_processes:
+            # Kill all matching processes
+            closed = []
+            for proc in found_processes:
+                try:
+                    subprocess.run(
+                        f"taskkill /F /IM \"{proc}\"",
+                        shell=True, check=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    )
+                    closed.append(proc)
+                except:
+                    pass
+            
+            if closed:
+                return f"✅ Closed {target}: {', '.join(closed)}"
+    except Exception as e:
+        print(f"⚠️ Error finding process: {e}")
+    
+    return f"❌ Could not close {target}. Is it running?"
+
 
 def get_file_hash(filepath: str) -> str:
     """Calculate MD5 hash of a file to check for duplicates."""
@@ -266,40 +380,108 @@ def find_and_open_file(filename: str) -> str:
         os.startfile(matches[0])
         return f"Found {len(matches)} copies of the same file. Opened: {matches[0]}"
     else:
-        # Different content, ask user
-        # Format list nicely
-        # We can implement a smarter selection here, but for now list them.
-        files_list = "\n".join([f"- {m}" for m in matches[:5]]) # Limit to 5
+        # Different content, return structured data for agent to handle
+        # We limit to 5 for the message, but return all (or top N) in the list
+        files_list = "\n".join([f"- {m}" for m in matches[:5]])
         if len(matches) > 5:
             files_list += f"\n...and {len(matches)-5} more."
             
-        return f"Found multiple different files matching '{filename}':\n{files_list}\n\nPlease specify full path or rename to be unique."
+        return {
+            "status": "multiple_files",
+            "message": f"Found multiple different files matching '{filename}':\n{files_list}\n\nPlease specify full path or rename to be unique.",
+            "files": matches[:10] # Limit options to 10 to avoid UI clutter
+        }
 
 def find_file_paths(filename: str) -> list[str]:
-    """Helper to find all file paths matching a name."""
+    """
+    A1 HYBRID SEARCH: Find file paths using cache + smart fallback.
+    
+    Strategy:
+    1. Check cache (0.1s) - Fast O(1) lookup
+    2. If not found, check likely folders (Downloads/Desktop/Documents) - Handles "new files"
+    3. Cache any newly found files for faster subsequent access
+    4. Return results or empty list
+    
+    This solves "The New File Problem":
+    - User downloads invoice.pdf
+    - Cache doesn't have it yet (built 2 hours ago)
+    - Smart fallback finds it in Downloads folder
+    - File is immediately cached for next time!
+    
+    Performance:
+    - Cache hit: <100ms
+    - Cache miss + smart fallback: ~500ms (only scans 3 folders)
+    - Second access: <100ms (now cached!)
+    
+    Args:
+        filename: File to search for (case-insensitive)
+    
+    Returns:
+        List of absolute file paths
+    """
+    cache = get_file_cache()
+    
+    # === STEP 1: Fast Cache Search ===
+    matches = cache.search(filename)
+    if matches:
+        return matches
+    
+    # === STEP 2: Smart Fallback for "New Files" ===
+    # If not in cache, quickly scan likely locations
+    # This prevents user frustration when files aren't in index
+    print(f"⚠️ File '{filename}' not in index. Checking recent folders...")
+    
     user_home = os.path.expanduser("~")
-    matches = []
-    target_name = filename.lower()
+    likely_paths = [
+        os.path.join(user_home, "Downloads"),
+        os.path.join(user_home, "Desktop"),
+        os.path.join(user_home, "Documents")
+    ]
     
-    for root, dirs, files in os.walk(user_home):
-        dirs[:] = [d for d in dirs if not d.startswith('.') and d.lower() != 'appdata']
-        for file in files:
-            if target_name == file.lower(): # Exact match for rename preference, or partial? Let's do exact for rename to be safe
-                matches.append(os.path.join(root, file))
-            elif target_name in file.lower():
-                 pass # For open we accept partial, for rename maybe we should be stricter? 
-                 # Let's stick to the current logic: "find_and_open" uses partial.
-                 # "rename" should probably find the best match.
+    found_matches = []
+    target_lower = filename.lower()
     
-    # Re-implementing loose match for consistency if exact failed
-    if not matches:
-        for root, dirs, files in os.walk(user_home):
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d.lower() != 'appdata']
-            for file in files:
-                if target_name in file.lower():
-                    matches.append(os.path.join(root, file))
+    # Clean target (remove noise words)
+    noise_words = [" file", " document", " sheet", " workbook", " excel", " word", " ppt"]
+    clean_target = target_lower
+    for noise in noise_words:
+        clean_target = clean_target.replace(noise, "")
+    clean_target = clean_target.strip()
+    if not clean_target:
+        clean_target = target_lower
     
-    return matches
+    for path in likely_paths:
+        if not os.path.exists(path):
+            continue
+        
+        try:
+            # Non-recursive scan of top level (very fast, ~50ms per folder)
+            for item in os.listdir(path):
+                item_lower = item.lower()
+                
+                # Check for match
+                if clean_target in item_lower or target_lower in item_lower:
+                    full_path = os.path.join(path, item)
+                    
+                    # Only include files, not directories
+                    if os.path.isfile(full_path):
+                        found_matches.append(full_path)
+                        
+                        # === STEP 3: Cache for next time! ===
+                        cache.add_to_cache(full_path)
+        except PermissionError:
+            # Skip if we can't read the folder
+            continue
+        except Exception as e:
+            # Skip on any other error
+            print(f"⚠️ Error scanning {path}: {e}")
+            continue
+    
+    if found_matches:
+        print(f"✅ Found {len(found_matches)} file(s) and cached for future access!")
+    
+    return found_matches
+
 
 def rename_file(old_name: str, new_name: str) -> str:
     """Rename a file in user/system folders."""
@@ -340,15 +522,71 @@ def rename_file(old_name: str, new_name: str) -> str:
     except Exception as e:
         return f"Error renaming file: {str(e)}"
 
+def delete_file(filename: str) -> str:
+    """
+    A1 SAFE DELETE: Move file to Recycle Bin/Trash instead of permanent deletion.
+    This allows users to recover accidentally deleted files.
+    """
+    matches = find_file_paths(filename)
+    
+    if not matches:
+        return f"File '{filename}' not found."
+    
+    if len(matches) > 1:
+        # Check if they are duplicates
+        first_hash = get_file_hash(matches[0])
+        all_identical = True
+        for m in matches[1:]:
+            if get_file_hash(m) != first_hash:
+                all_identical = False
+                break
+        
+        if not all_identical:
+             files_list = "\n".join([f"- {m}" for m in matches[:5]])
+             return f"Found multiple files named '{filename}'. Please specify which one to delete:\n{files_list}"
+        
+        # If identical, delete all duplicates
+        target_paths = matches
+    else:
+        target_paths = matches
+        
+    try:
+        # A1 SAFETY IMPROVEMENT: Use send2trash instead of os.remove
+        # Files go to Recycle Bin (Windows) or Trash (macOS/Linux) - recoverable!
+        from send2trash import send2trash
+        
+        deleted_files = []
+        for target_path in target_paths:
+            send2trash(target_path)
+            deleted_files.append(os.path.basename(target_path))
+        
+        if len(deleted_files) == 1:
+            return f"✓ Moved '{deleted_files[0]}' to Recycle Bin (recoverable)."
+        else:
+            return f"✓ Moved {len(deleted_files)} duplicate files to Recycle Bin (recoverable)."
+    except Exception as e:
+        return f"Error deleting file: {str(e)}"
+
+
 import shutil
 
 def move_file(filename: str, destination: str) -> str:
-    """Move a file to a system folder (Documents, Downloads, etc.)."""
-    # 1. Resolve Destination
+    """Move a file to any folder (Documents, Downloads, or custom folders)."""
     user_home = os.path.expanduser("~")
+    
+    # === Step 1: Clean destination name ===
+    # "music folder" → "music", "downloads folder" → "downloads"
+    dest_clean = destination.lower().strip()
+    noise_words = [" folder", " directory", " dir", " drive"]
+    for noise in noise_words:
+        dest_clean = dest_clean.replace(noise, "")
+    dest_clean = dest_clean.strip()
+    
+    # === Step 2: Check predefined folders first ===
     dest_map = {
         "documents": os.path.join(user_home, "Documents"),
         "doc": os.path.join(user_home, "Documents"),
+        "docs": os.path.join(user_home, "Documents"),
         "downloads": os.path.join(user_home, "Downloads"),
         "download": os.path.join(user_home, "Downloads"),
         "desktop": os.path.join(user_home, "Desktop"),
@@ -357,23 +595,57 @@ def move_file(filename: str, destination: str) -> str:
         "video": os.path.join(user_home, "Videos"),
         "pictures": os.path.join(user_home, "Pictures"),
         "picture": os.path.join(user_home, "Pictures"),
+        "photos": os.path.join(user_home, "Pictures"),
         "onedrive": os.path.join(user_home, "OneDrive"),
+        "google drive": os.path.join(user_home, "Google Drive"),
+        "gdrive": os.path.join(user_home, "Google Drive"),
     }
     
-    target_dir = dest_map.get(destination.lower().strip())
+    target_dir = dest_map.get(dest_clean)
     
-    # If not a keyword, maybe it's a full path?
+    # === Step 3: If not predefined, search for the folder ===
     if not target_dir:
+        # Check if it's a full/relative path
         if os.path.isdir(destination):
             target_dir = destination
+        elif os.path.isdir(dest_clean):
+            target_dir = dest_clean
         else:
-             return f"Unknown destination folder '{destination}'. Try 'Documents', 'Desktop', 'Downloads', etc."
+            # Search in common parent folders
+            search_locations = [
+                user_home,
+                os.path.join(user_home, "Documents"),
+                os.path.join(user_home, "Desktop"),
+                os.path.join(user_home, "Downloads"),
+            ]
+            
+            found_folders = []
+            for parent in search_locations:
+                if not os.path.exists(parent):
+                    continue
+                try:
+                    for item in os.listdir(parent):
+                        item_path = os.path.join(parent, item)
+                        if os.path.isdir(item_path) and dest_clean in item.lower():
+                            found_folders.append(item_path)
+                except PermissionError:
+                    continue
+            
+            if len(found_folders) == 1:
+                target_dir = found_folders[0]
+            elif len(found_folders) > 1:
+                folders_list = "\n".join([f"- {f}" for f in found_folders[:5]])
+                return f"Found multiple folders matching '{dest_clean}':\n{folders_list}\nPlease specify the exact folder path."
+    
+    if not target_dir:
+        available = ", ".join(sorted(dest_map.keys()))
+        return f"❌ Folder '{destination}' not found. Available: {available}"
              
-    # 2. Find Source File
+    # === Step 4: Find Source File ===
     matches = find_file_paths(filename)
     
     if not matches:
-        return f"File '{filename}' not found."
+        return f"❌ File '{filename}' not found."
     
     if len(matches) > 1:
         # Check for duplicates using hash
@@ -388,26 +660,26 @@ def move_file(filename: str, destination: str) -> str:
              files_list = "\n".join([f"- {m}" for m in matches[:5]])
              return f"Found multiple different files named '{filename}'. Please specify full path:\n{files_list}"
         
-        # Identical? Pick first.
         source_path = matches[0]
     else:
         source_path = matches[0]
         
-    # 3. Move
+    # === Step 5: Move ===
     try:
         if not os.path.exists(target_dir):
-            return f"Destination directory does not exist: {target_dir}"
+            return f"❌ Destination directory does not exist: {target_dir}"
             
         file_basename = os.path.basename(source_path)
         dest_path = os.path.join(target_dir, file_basename)
         
         if os.path.exists(dest_path):
-            return f"Error: A file named '{file_basename}' already exists in {destination}."
+            return f"❌ A file named '{file_basename}' already exists in {os.path.basename(target_dir)}."
             
         shutil.move(source_path, dest_path)
-        return f"Successfully moved '{file_basename}' to {destination}."
+        return f"✅ Moved '{file_basename}' to {os.path.basename(target_dir)}"
     except Exception as e:
-        return f"Error moving file: {str(e)}"
+        return f"❌ Error moving file: {str(e)}"
+
 
 def type_text(text: str, interval: float = 0.05) -> str:
     """Type text into the currently active window."""

@@ -190,10 +190,10 @@ def delete_row(filepath: str, sheet_name: str, row_index: int) -> str:
     except Exception as e:
         return f"Error deleting row: {str(e)}"
 
-def set_style(filepath: str, sheet_name: str, cell_range: str, bg_color: str = None, font_color: str = None, bold: bool = False) -> str:
+def set_style(filepath: str, sheet_name: str, cell_range: str, bg_color: str = None, font_color: str = None, bold: bool = False, border: bool = False) -> str:
     """
-    Applies styles to a cell or range (e.g., 'A1' or 'A1:B2').
-    Colors should be Hex codes (e.g., 'FF0000' for red) or loose names mapped to hex.
+    Applies styles to a cell or range.
+    Colors should be Hex codes or mapped names.
     """
     try:
         if not os.path.exists(filepath):
@@ -205,16 +205,10 @@ def set_style(filepath: str, sheet_name: str, cell_range: str, bg_color: str = N
         else:
              ws = wb.active
         
-        # Color Mapping (Simple)
+        # Color Mapping
         color_map = {
-            "red": "FF0000",
-            "green": "00FF00",
-            "blue": "0000FF",
-            "yellow": "FFFF00",
-            "black": "000000",
-            "white": "FFFFFF",
-            "gray": "CCCCCC",
-            "orange": "FFA500"
+            "red": "FF0000", "green": "00FF00", "blue": "0000FF", "yellow": "FFFF00",
+            "black": "000000", "white": "FFFFFF", "gray": "CCCCCC", "orange": "FFA500"
         }
         
         if bg_color and bg_color.lower() in color_map: bg_color = color_map[bg_color.lower()]
@@ -222,6 +216,7 @@ def set_style(filepath: str, sheet_name: str, cell_range: str, bg_color: str = N
         
         fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid") if bg_color else None
         font = Font(color=font_color, bold=bold) if (font_color or bold) else None
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin')) if border else None
 
         # Check if range or single cell
         if ":" in cell_range:
@@ -229,27 +224,40 @@ def set_style(filepath: str, sheet_name: str, cell_range: str, bg_color: str = N
             for row in rows:
                 for cell in row:
                     if fill: cell.fill = fill
-                    if font: 
-                        # Merge existing font style with new props if needed, but openpyxl makes this hard.
-                        # We just apply the new font settings.
-                        cell.font = font
+                    if font: cell.font = font
+                    if thin_border: cell.border = thin_border
         else:
             cell = ws[cell_range]
             if fill: cell.fill = fill
             if font: cell.font = font
+            if thin_border: cell.border = thin_border
 
         wb.save(filepath)
         return f"Applied styles to {cell_range} in {os.path.basename(filepath)}."
     except Exception as e:
         return f"Error styling cells: {str(e)}"
 
-def update_pivot_source(filepath: str, pivot_sheet_name: str, new_range: str) -> str:
+def enable_pivot_table_refresh(filepath: str) -> str:
     """
-    Updates the data source for a pivot table. 
-    Note: OpenPyXL support for Pivot Tables is limited. We can try to update the definition.
-    This is complex/fragile.
-    
-    A safer, simpler approach for "updating pivots" is usually ensuring the pivot relies on a 
-    Named Range or Table, and we just resize that Table.
+    Attempts to enable 'Refresh on Load' for all Pivot Tables in the workbook.
     """
-    return "Pivot Table update not fully supported via backend yet. Please ensure your Pivot Table uses a dynamic Named Range or Table, and simple data appends will automatically update it on next Refresh."
+    try:
+        if not os.path.exists(filepath):
+            return f"Error: File '{filepath}' not found."
+            
+        wb = openpyxl.load_workbook(filepath)
+        
+        count = 0
+        for sheet in wb.worksheets:
+            for pivot in sheet._pivots:
+                pivot.cache.refreshOnLoad = True
+                count += 1
+                
+        wb.save(filepath)
+        if count > 0:
+            return f"Enabled 'Refresh on Load' for {count} Pivot Tables."
+        else:
+            return "No Pivot Tables found to update."
+            
+    except Exception as e:
+        return f"Error updating Pivot Table settings: {str(e)}"

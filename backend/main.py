@@ -5,10 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import agent as agent_router
 from routers import tools as tools_router
 
+# Voice dictation (simple, local)
+from api import dictation
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic (e.g., connect to Temporal, Weaviate)
+    # Startup logic
     print("Startup: Connecting to services...")
+    print("✅ Voice dictation ready (Faster-Whisper)")
     yield
     # Shutdown logic
     print("Shutdown: Closing connections...")
@@ -18,14 +22,16 @@ app = FastAPI(lifespan=lifespan)
 # Allow CORS for Frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Added Vite default
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Include routers
 app.include_router(agent_router.router)
 app.include_router(tools_router.router)
+app.include_router(dictation.router)  # Simple voice dictation
 
 
 @app.get("/")

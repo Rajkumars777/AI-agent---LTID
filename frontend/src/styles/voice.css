@@ -1,0 +1,46 @@
+/* Voice Interface Animations */
+
+@keyframes wave {
+  0%, 100% {
+    height: 20%;
+  }
+  50% {
+    height: 100%;
+  }
+}
+
+.animate-wave {
+  animation: wave 0.8s ease-in-out infinite;
+}
+
+/* Pulse animation for recording */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Ripple animation for listening */
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

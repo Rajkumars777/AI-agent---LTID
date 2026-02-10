@@ -45,41 +45,123 @@ def execute_tool(state: AgentState):
     
     # FAST PATH: Check for simple single OR multiple commands
     import re
-    # Pattern looks for "verb target", allowing validation
-    simple_pattern = r"^\s*(open|launch|play|view|show|get|search|close|stop|exit|kill|type|write|set)\s+(.+)$"
     
-    # Split by comma or ' and ' (ignoring case)
-    parts = re.split(r",|\s+and\s+", user_input, flags=re.IGNORECASE)
-    parts = [p.strip() for p in parts if p.strip()]
+    # Initialize commands
+    commands = []
     
-    fast_path_commands = []
-    all_simple = True
+    # Check if this is a QUERY command (who, what, find, filter, list, etc.)
+    # These should go directly to DYNAMIC_CODE if they reference a file
+    query_starters = ["who", "what", "which", "find", "filter", "list", "show me", "get", "how many", "count"]
+    file_pattern = r'[\w\-\.]+\.(xlsx|xls|csv)'
+    is_query = any(user_input.lower().strip().startswith(q) for q in query_starters)
+    has_file = re.search(file_pattern, user_input, re.IGNORECASE)
     
-    # Heuristic: If input is complex (long), skip fast path to leverage AI context awareness
-    if len(user_input.split()) > 4:
-        all_simple = False
-    else:    
+    if is_query and has_file:
+        # Extract file name from the query and set commands directly
+        file_match = re.search(r'[\w\-\.]+\.(xlsx|xls|csv)', user_input, re.IGNORECASE)
+        file_name = file_match.group(0) if file_match else "active_workbook"
+        
+        from execution.nlu import Command
+        commands = [Command(action="DYNAMIC_CODE", target=file_name, context=user_input)]
+    
+    # Only run fast_path if commands weren't set by query detection
+    if not commands:
+        # Pattern looks for "verb target", allowing validation
+        simple_pattern = r"^\s*(open|launch|play|view|show|get|search|close|stop|exit|kill|type|write|set|delete|remove|rename|move|add|generate|create|insert|read|find|filter|who|what|which|list|count)\s+(.+)$"
+        
+        # Split by comma or ' and ' (ignoring case) - but NOT if it's part of data description
+        if not re.search(r'with\s+.+\s+and\s+', user_input, re.IGNORECASE):
+            parts = re.split(r",|\s+and\s+", user_input, flags=re.IGNORECASE)
+        else:
+            parts = [user_input]
+        parts = [p.strip() for p in parts if p.strip()]
+    
+        fast_path_commands = []
+        all_simple = True
+        
         for part in parts:
             match = re.match(simple_pattern, part, re.IGNORECASE)
             if match:
                 verb = match.group(1).upper()
                 target = match.group(2).strip()
                 
+                # A1 IMPROVEMENT: Remove filler words that confuse file search
+                filler_words = ["the ", "my ", "this ", "that ", "a "]
+                for filler in filler_words:
+                    if target.lower().startswith(filler):
+                        target = target[len(filler):]
+                        break
+                
                 # Normalize Verb
                 if verb in ["LAUNCH", "PLAY", "VIEW", "SHOW", "GET", "SEARCH"]: verb = "OPEN"
                 if verb in ["STOP", "EXIT", "KILL"]: verb = "CLOSE"
-                if verb in ["WRITE"]: verb = "TYPE" # Note: "Write to file" logic often captured by complex path, but be careful here.
+                if verb in ["WRITE"]: verb = "TYPE"
+                if verb in ["REMOVE"]: verb = "DELETE"
+                if verb in ["READ"]: verb = "EXCEL_READ"
+                
+                # Route ADD/GENERATE/CREATE/INSERT to DYNAMIC_CODE for complex operations
+                if verb in ["ADD", "GENERATE", "CREATE", "INSERT"]:
+                    complex_keywords = [
+                        "dummy", "random", "fake", "sample", "test", 
+                        "row", "rows", "data", "report", "analysis",
+                        "excel", "spreadsheet", "sheet", "file", "values"
+                    ]
+                    
+                    is_create_generate = verb in ["CREATE", "GENERATE"]
+                    has_complex_keywords = any(kw in target.lower() for kw in complex_keywords)
+                    
+                    if is_create_generate or has_complex_keywords:
+                        file_pattern_inner = r'[\w\-]+\.(xlsx|xls|csv)'
+                        file_match_inner = re.search(file_pattern_inner, target, re.IGNORECASE)
+                        
+                        if file_match_inner:
+                            file_name = file_match_inner.group(0)
+                        else:
+                            import time
+                            timestamp = time.strftime("%Y%m%d_%H%M%S")
+                            file_name = f"generated_{timestamp}.xlsx"
+                        
+                        task_desc = part
+                        from execution.nlu import Command
+                        fast_path_commands.append(Command(action="DYNAMIC_CODE", target=file_name, context=task_desc))
+                        continue
+                
+                # COMPLEXITY CHECK for TYPE
+                if verb == "TYPE":
+                    is_quoted = False
+                    if (target.startswith('"') and target.endswith('"')) or (target.startswith("'") and target.endswith("'")):
+                        is_quoted = True
+                        target = target[1:-1]
+                    
+                    if not is_quoted:
+                        from execution.nlu import Command
+                        fast_path_commands.append(Command(action=verb, target=target, context="GENERATE_ASYNC"))
+                        continue
+                
+                # SPECIAL PARSING for RENAME and MOVE commands
+                context = None
+                if verb in ["RENAME", "MOVE"]:
+                    rename_pattern = r"^(.+?)\s+(?:to|into)\s+(.+)$"
+                    rename_match = re.match(rename_pattern, target, re.IGNORECASE)
+                    
+                    if rename_match:
+                        target = rename_match.group(1).strip()
+                        context = rename_match.group(2).strip()
+                    else:
+                        all_simple = False
+                        break
                 
                 from execution.nlu import Command
-                fast_path_commands.append(Command(action=verb, target=target, context=None))
+                fast_path_commands.append(Command(action=verb, target=target, context=context))
             else:
                 all_simple = False
                 break
+        
+        if all_simple and fast_path_commands:
+            commands = fast_path_commands
     
-    if all_simple and fast_path_commands:
-        commands = fast_path_commands
-    else:
-        # COMPLEX PATH: Use DSPy NLU
+    # FALLBACK: Use DSPy NLU if no commands were extracted
+    if not commands:
         try:
             commands = extract_commands(user_input)
         except Exception as e:
@@ -89,6 +171,7 @@ def execute_tool(state: AgentState):
                  "content": f"NLU Error: {str(e)}",
                  "timestamp": datetime.now().strftime("%I:%M:%S %p")
             })
+
 
     # If NLU fails or returns empty (fallback)
     if not commands:
@@ -100,8 +183,46 @@ def execute_tool(state: AgentState):
          return {"messages": ["I didn't understand that command."], "intermediate_steps": steps}
 
     final_results = []
+    
+    # Optimizer: Merge OPEN + GENERATE_ASYNC
+    # If we have [OPEN(app), TYPE(gen_async)], we remove OPEN, because execute_generative_command handles opening in parallel.
+    optimized_commands = []
+    skip_next = False
+    
+    for i in range(len(commands)):
+        if skip_next:
+            skip_next = False
+            continue
+            
+        cmd = commands[i]
+        
+        # Look ahead
+        if cmd.action in ["OPEN", "LAUNCH"] and i + 1 < len(commands):
+            next_cmd = commands[i+1]
+            if next_cmd.action in ["TYPE", "WRITE"] and next_cmd.context == "GENERATE_ASYNC":
+                # Check if targets match? User might say "open notepad and type..."
+                # Usually targets match or are implied.
+                # We assume the TYPE command will pick up the app name from this OPEN command
+                # But we need to pass the app name to the TYPE command context or target?
+                # In the loop we did: `app_name = c.target` looking at `commands`.
+                # If we remove it from `optimized_commands`, we need to ensure TYPE knows the app name.
+                # Let's attach it to the next command's context or a new attribute?
+                # or just set next_cmd.context = f"GENERATE_ASYNC:{cmd.target}"
+                
+                next_cmd.context = f"GENERATE_ASYNC:{cmd.target}"
+                # content is already in next_cmd.target
+                
+                # Skip this OPEN command
+                trace_logs = [] # We might miss logs if we skip
+                # But we want parallelism.
+                continue
+        
+        optimized_commands.append(cmd)
+        
+    commands = optimized_commands
 
     # 2. Execution Loop
+    
     for cmd in commands:
         action = cmd.action.upper()
         target = cmd.target
@@ -127,8 +248,23 @@ def execute_tool(state: AgentState):
                 if "Could not find" in launch_res or "not in the system" in launch_res:
                     trace_logs.append(f"App launch failed. Searching for file '{target}'...")
                     
-                    file_path = find_and_open_file(target) # TODO: Update find_and_open_file to use context
-                    result = file_path
+                    file_path = find_and_open_file(target)
+                    
+                    # Handle multiple files structured result
+                    if isinstance(file_path, dict) and file_path.get("status") == "multiple_files":
+                        result = file_path["message"]
+                        # Generate options for UI
+                        options = []
+                        for f in file_path.get("files", []):
+                            options.append({
+                                "label": f"Open {os.path.basename(f)}",
+                                "value": f"open {f}"
+                            })
+                        
+                        # Attach options to the step (we'll do this when creating step_data)
+                        attachment = {"type": "options", "data": options}
+                    else:
+                        result = file_path
                 else:
                     result = launch_res
 
@@ -178,7 +314,35 @@ def execute_tool(state: AgentState):
 
             elif action in ["TYPE", "WRITE"]:
                 tool_used = "Desktop Automation (Type)"
-                result = type_text(target)
+                
+                # Context-Aware Generation (A1 Logic)
+                is_async = False
+                app_name = "Notepad" # Default
+                
+                if context and context.startswith("GENERATE_ASYNC"):
+                     is_async = True
+                     # Check if app name is embedded (e.g., GENERATE_ASYNC:notepad)
+                     if ":" in context:
+                         _, extracted_app = context.split(":", 1)
+                         app_name = extracted_app.strip()
+                     else:
+                         # Fallback: Try to find open command in *original* steps? 
+                         # But we optimized it away.
+                         # If optimization didn't run (e.g. quoted text), we wouldn't be here.
+                         pass
+                
+                if is_async or context == "GENERATE":
+                     from execution.system_utils import execute_generative_command
+                     import asyncio
+                     
+                     print(f"DEBUG: Triggering Parallel Execution for '{app_name}'...")
+                     try:
+                        result = asyncio.run(execute_generative_command(app_name, target))
+                     except Exception as e:
+                        result = f"Error in parallel execution: {e}"
+                else:
+                     # Literal typing (Fast Path quotes)
+                     result = type_text(target)
 
             elif action in ["RENAME"]:
                 tool_used = "Desktop Automation (Rename)"
@@ -193,6 +357,11 @@ def execute_tool(state: AgentState):
                     result = move_file(target, context)
                 else:
                     result = "Error: Destination not provided for move."
+
+            elif action in ["DELETE", "REMOVE"]:
+                tool_used = "Desktop Automation (Delete)"
+                from capabilities.desktop import delete_file
+                result = delete_file(target)
 
             elif action == "EXCEL_READ":
                 tool_used = "Excel (Read)"
@@ -398,15 +567,18 @@ def execute_tool(state: AgentState):
 
                 if context:
                     parts = [p.strip() for p in context.split(',')]
-                    # simple parsing: Cell, Color
+                    # simple parsing: Cell, Color, Border
                     if len(parts) >= 2:
                         cell = parts[0]
                         color = parts[1]
+                        # Check for keywords
+                        is_bold = "bold" in context.lower()
+                        has_border = "border" in context.lower()
                         
                         # Capture Before State (HTML)
                         before_view = read_sheet_data(target, fmt="html")
 
-                        result_action = set_style(target, None, cell, bg_color=color)
+                        result_action = set_style(target, None, cell, bg_color=color, bold=is_bold, border=has_border)
 
                         # Capture After State (HTML)
                         after_view = read_sheet_data(target, fmt="html")
@@ -426,6 +598,16 @@ def execute_tool(state: AgentState):
                         """
                     else:
                          result = "Error: Context requires 'Cell, Color'."
+
+            elif action == "EXCEL_REFRESH_PIVOTS":
+                tool_used = "Excel (Refresh Pivots)"
+                from capabilities.excel_manipulation import enable_pivot_table_refresh
+                
+                if not os.path.exists(target) and not os.path.isabs(target):
+                     found_paths = find_file_paths(target)
+                     if found_paths: target = found_paths[0]
+                
+                result = enable_pivot_table_refresh(target)
 
             elif action == "DYNAMIC_CODE":
                 tool_used = "Dynamic AI Coder"

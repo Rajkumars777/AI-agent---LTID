@@ -1,15 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from capabilities.file_ops import list_files
-from execution.browser import browse_url, screenshot_url
+import os
+from capabilities.browser import browse_url, screenshot_url
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 @router.get("/files")
 async def get_files(directory: str = "."):
     """List files in a directory."""
-    return {"files": list_files(directory)}
+    try:
+        return {"files": os.listdir(directory)}
+    except FileNotFoundError:
+        return {"files": [], "error": f"Directory {directory} not found"}
 
 class BrowseRequest(BaseModel):
     url: str

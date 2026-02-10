@@ -18,4 +18,8 @@ pymupdf
 xlsxwriter
 pandas
 pyautogui
+pygetwindow
+pyperclip
 AppOpener
+send2trash
+faster-whisper

@@ -11,13 +11,20 @@ export type Step = {
     type: "Reasoning" | "Decision" | "Action";
     content: string;
     timestamp: string;
+    attachment?: {
+        type: "image" | "video" | "audio" | "options";
+        url?: string;
+        name?: string;
+        data?: any[];
+    };
 };
 
 interface TimelineFeedProps {
     steps: Step[];
+    onOptionSelect?: (value: string) => void;
 }
 
-export function TimelineFeed({ steps }: TimelineFeedProps) {
+export function TimelineFeed({ steps, onOptionSelect }: TimelineFeedProps) {
     if (steps.length === 0) return null;
 
     return (
@@ -92,10 +99,29 @@ export function TimelineFeed({ steps }: TimelineFeedProps) {
                                         th: ({ node, ...props }) => <th {...props} className="border border-white/10 p-2 bg-white/5 text-left font-semibold text-white/70" />,
                                         td: ({ node, ...props }) => <td {...props} className="border border-white/10 p-2 text-white/60 whitespace-nowrap" />,
                                         p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
-                                    }}
+                                        // Handle Python exec() error output containing <string> and <module>
+                                        string: ({ node, ...props }: any) => <span {...props} />,
+                                        module: ({ node, ...props }: any) => <span {...props} />,
+                                    } as any}
                                 >
                                     {step.content}
                                 </ReactMarkdown>
+
+                                {/* Options Buttons */}
+                                {step.attachment && step.attachment.type === "options" && (
+                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {(step.attachment as any).data.map((opt: any, idx: number) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => onOptionSelect && onOptionSelect(opt.value)}
+                                                className="px-3 py-2 text-left bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300 transition-colors flex items-center gap-2 group/btn"
+                                            >
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 group-hover/btn:bg-emerald-400" />
+                                                <span className="truncate">{opt.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </motion.div>
