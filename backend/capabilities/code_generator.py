@@ -158,3 +158,7 @@ NOTE: This is a CREATE/GENERATE task. You must:
 
     except Exception as gen_err:
         return f"Error generating script: {str(gen_err)}"
+            return f"**Error executing generated script:**\n```python\n{code}\n```\n\n**Error:**\n{error_msg}"
+
+    except Exception as gen_err:
+        return f"Error generating script: {str(gen_err)}"

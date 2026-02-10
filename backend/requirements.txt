@@ -23,3 +23,5 @@ pyperclip
 AppOpener
 send2trash
 faster-whisper
+docxtpl
+pdfplumber

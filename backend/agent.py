@@ -49,20 +49,31 @@ def execute_tool(state: AgentState):
     # Initialize commands
     commands = []
     
-    # Check if this is a QUERY command (who, what, find, filter, list, etc.)
-    # These should go directly to DYNAMIC_CODE if they reference a file
-    query_starters = ["who", "what", "which", "find", "filter", "list", "show me", "get", "how many", "count"]
+    # Check for DOC_REPORT commands first (extract + store in word/report)
+    doc_keywords = ["word document", "word doc", "docx", "report", "store in word", "save to word", "save in word", "create a report", "generate report", "save as document"]
     file_pattern = r'[\w\-\.]+\.(xlsx|xls|csv)'
-    is_query = any(user_input.lower().strip().startswith(q) for q in query_starters)
     has_file = re.search(file_pattern, user_input, re.IGNORECASE)
+    is_doc_report = any(kw in user_input.lower() for kw in doc_keywords)
     
-    if is_query and has_file:
-        # Extract file name from the query and set commands directly
+    if is_doc_report and has_file:
         file_match = re.search(r'[\w\-\.]+\.(xlsx|xls|csv)', user_input, re.IGNORECASE)
         file_name = file_match.group(0) if file_match else "active_workbook"
         
         from execution.nlu import Command
-        commands = [Command(action="DYNAMIC_CODE", target=file_name, context=user_input)]
+        commands = [Command(action="DOC_REPORT", target=file_name, context=user_input)]
+    
+    # Check if this is a QUERY command (who, what, find, filter, list, etc.)
+    # These should go directly to DYNAMIC_CODE if they reference a file
+    if not commands:
+        query_starters = ["who", "what", "which", "find", "filter", "list", "show me", "get", "how many", "count"]
+        is_query = any(user_input.lower().strip().startswith(q) for q in query_starters)
+        
+        if is_query and has_file:
+            file_match = re.search(r'[\w\-\.]+\.(xlsx|xls|csv)', user_input, re.IGNORECASE)
+            file_name = file_match.group(0) if file_match else "active_workbook"
+            
+            from execution.nlu import Command
+            commands = [Command(action="DYNAMIC_CODE", target=file_name, context=user_input)]
     
     # Only run fast_path if commands weren't set by query detection
     if not commands:
@@ -608,6 +619,95 @@ def execute_tool(state: AgentState):
                      if found_paths: target = found_paths[0]
                 
                 result = enable_pivot_table_refresh(target)
+
+            elif action == "DOC_REPORT":
+                tool_used = "Document Intelligence (Report)"
+                from capabilities.report_generator import generate_report_from_data
+                
+                task_desc = context if context else user_input
+                target_file = target
+                
+                # ── Robust File Resolution ──
+                if not os.path.exists(target_file):
+                    # 1. Try find_file_paths (uses search index)
+                    if not os.path.isabs(target_file):
+                        found = find_file_paths(target_file)
+                        if found: target_file = found[0]
+                    
+                    # 2. Try alternative extension (.xls ↔ .xlsx)
+                    if not os.path.exists(target_file):
+                        base, ext = os.path.splitext(target_file)
+                        alt_name = None
+                        if ext.lower() == '.xlsx':
+                            alt_name = os.path.basename(base) + '.xls'
+                        elif ext.lower() == '.xls':
+                            alt_name = os.path.basename(base) + '.xlsx'
+                        
+                        if alt_name:
+                            found = find_file_paths(alt_name)
+                            if found: target_file = found[0]
+                    
+                    # 3. Search common user directories
+                    if not os.path.exists(target_file):
+                        home = os.path.expanduser("~")
+                        search_dirs = [
+                            os.path.join(home, "Desktop"),
+                            os.path.join(home, "Documents"),
+                            os.path.join(home, "Downloads"),
+                            home,
+                        ]
+                        fname = os.path.basename(target)
+                        fname_base = os.path.splitext(fname)[0]
+                        
+                        for d in search_dirs:
+                            if not os.path.isdir(d):
+                                continue
+                            for f in os.listdir(d):
+                                if f.lower() == fname.lower() or os.path.splitext(f)[0].lower() == fname_base.lower():
+                                    target_file = os.path.join(d, f)
+                                    break
+                            if os.path.exists(target_file):
+                                break
+                    
+                    print(f"[DOC_REPORT] Resolved file: {target_file} (exists={os.path.exists(target_file)})")
+                
+                trace_logs.append(f"Generating structured report for: {task_desc}")
+                
+                # Capture Before State (source data preview)
+                before_view = ""
+                if os.path.exists(target_file):
+                    before_view = read_sheet_data(target_file, fmt="html")
+                
+                # Execute S1 Pipeline
+                report_result = generate_report_from_data(task=task_desc, file_path=target_file)
+                
+                if report_result["status"] == "success":
+                    output_path = report_result["output_path"]
+                    summary = report_result["summary"]
+                    
+                    result = f"""
+                    <div class="excel-comparison">
+                        <div>
+                            <h4>Source Data</h4>
+                            {before_view}
+                        </div>
+                    </div>
+                    <p><strong>✅ {summary}</strong></p>
+                    <p>📄 Saved to: <code>{output_path}</code></p>
+                    """
+                    
+                    # Attach as downloadable file
+                    if output_path and os.path.exists(output_path):
+                        import urllib.parse
+                        encoded_path = urllib.parse.quote(output_path)
+                        attachment = {
+                            "type": "file",
+                            "url": f"http://localhost:8000/files/stream?path={encoded_path}",
+                            "name": os.path.basename(output_path)
+                        }
+                else:
+                    error_msg = report_result.get("error", "Unknown error")
+                    result = f"❌ Report generation failed: {error_msg}"
 
             elif action == "DYNAMIC_CODE":
                 tool_used = "Dynamic AI Coder"

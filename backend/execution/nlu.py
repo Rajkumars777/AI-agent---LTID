@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 # 1. Define Structured Output
 class Command(BaseModel):
-    action: str = Field(description="The action to perform: 'OPEN', 'CLOSE', 'TYPE', 'RENAME', 'MOVE', 'DELETE', 'SEARCH', 'EXCEL_READ', 'EXCEL_WRITE', 'EXCEL_ADD_ROW', 'EXCEL_DELETE_ROW', 'EXCEL_STYLE', 'EXCEL_REFRESH_PIVOTS', 'SET', 'DYNAMIC_CODE'.")
+    action: str = Field(description="The action to perform: 'OPEN', 'CLOSE', 'TYPE', 'RENAME', 'MOVE', 'DELETE', 'SEARCH', 'EXCEL_READ', 'EXCEL_WRITE', 'EXCEL_ADD_ROW', 'EXCEL_DELETE_ROW', 'EXCEL_STYLE', 'EXCEL_REFRESH_PIVOTS', 'SET', 'DYNAMIC_CODE', 'DOC_REPORT'.")
     target: str = Field(description="The primary object of the action (app name, file name, text to type).")
     context: Optional[str] = Field(None, description="Context. For DYNAMIC_CODE, this is the raw task description.")
 
@@ -21,6 +21,7 @@ class SimpleIntent(dspy.Signature):
     - OPEN, CLOSE, TYPE, SEARCH, MOVE, RENAME, DELETE
     - EXCEL_READ, EXCEL_WRITE, EXCEL_ADD_ROW, EXCEL_DELETE_ROW, EXCEL_STYLE
     - DYNAMIC_CODE: Use this for complex, ad-hoc, or multi-step analysis tasks that require custom logic (e.g., "Add 10 dummy rows", "Find max salary", "Sort by date", "Calculate average").
+    - DOC_REPORT: Use this when the user wants to extract/filter data and save it to a Word document, PDF, or create a report from data.
     
     CRITICAL RULES:
     1. **Compound Commands**: Split "open X and type Y" into multiple commands.
@@ -38,10 +39,13 @@ class SimpleIntent(dspy.Signature):
        - "refresh pivots" -> EXCEL_REFRESH_PIVOTS
        - "read sheet..." -> EXCEL_READ
     5. **Dynamic Code**: ONLY use DYNAMIC_CODE if the request requires complex logic, loops, or data generation that cannot be handled by standard tools.
-       - "Generate a report" -> DYNAMIC_CODE
        - "Calculate fibonacci" -> DYNAMIC_CODE
     6. **Search**: "find file", "search for" -> SEARCH
     7. **System**: "minimize", "maximize" -> SET
+    8. **Document Reports**: Use DOC_REPORT when the user wants to extract/filter data FROM a file and save/store it INTO a Word document or create a report.
+       - "extract employees with salary > 50000 and store in word document" -> DOC_REPORT (target=source file, context=full request)
+       - "create a report from sample.xlsx" -> DOC_REPORT
+       - "save filtered data to word" -> DOC_REPORT
     """
     user_input: str = dspy.InputField(desc="User's natural language command")
     commands: CommandList = dspy.OutputField(desc="JSON list of commands", format=CommandList)

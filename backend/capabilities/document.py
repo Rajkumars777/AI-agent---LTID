@@ -4,6 +4,7 @@ Combined module for all document-related operations.
 """
 
 import pymupdf  # PyMuPDF
+import pdfplumber  # S1-grade PDF table extraction
 from docx import Document
 import pandas as pd
 from typing import List
@@ -22,6 +23,23 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         return text
     except Exception as e:
         return f"Error extracting text from PDF: {str(e)}"
+
+
+def extract_tables_from_pdf(pdf_path: str) -> list:
+    """
+    Extract tables from a PDF using pdfplumber (S1-grade accuracy).
+    Returns a list of tables, where each table is a list of rows (list of strings).
+    """
+    try:
+        tables = []
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_table()
+                if extracted:
+                    tables.append(extracted)
+        return tables if tables else [["No tables found in this PDF."]]
+    except Exception as e:
+        return [[f"Error extracting tables from PDF: {str(e)}"]]
 
 
 # ==========================================
