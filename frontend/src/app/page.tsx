@@ -5,6 +5,7 @@ import { HeroSection } from "@/components/HeroSection";
 import { InputConsole } from "@/components/InputConsole";
 import { TimelineFeed, Step } from "@/components/TimelineFeed";
 import { RecentsHistory } from "@/components/RecentsHistory";
+
 import { chatWithAgent, cancelOperation, generateTaskId } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { StopCircle, Edit3, RotateCcw } from "lucide-react";
@@ -80,6 +81,21 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  const handleWebTaskComplete = (result: any) => {
+    const newStep: Step = {
+      type: "Action",
+      content: `**Web Task Completed**: ${result.status}`,
+      timestamp: new Date().toLocaleTimeString(),
+      attachment: {
+        type: "web_result",
+        data: result.data,
+        url: result.url,
+        screenshot: result.screenshot
+      }
+    };
+    setSteps(prev => [...prev, newStep]);
+  };
+
   return (
     <main className="min-h-screen bg-[#050510] relative overflow-hidden font-sans selection:bg-purple-500/30 flex flex-col">
       {/* Background Gradients */}
@@ -96,7 +112,10 @@ export default function Dashboard() {
             onSend={handleSend}
             loading={loading}
             lastCommand={lastCommand}
+            onWebTaskComplete={handleWebTaskComplete}
           />
+
+
 
           {/* Stop/Edit Controls - Show when loading or after cancel */}
           <AnimatePresence>

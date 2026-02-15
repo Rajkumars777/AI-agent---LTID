@@ -35,7 +35,7 @@ export const WakeWordAnimation: React.FC<WakeWordAnimationProps> = ({
                     <Volume2 size={32} className="animate-pulse" />
                     <div>
                         <div className="text-xl font-bold">Wake Word Detected!</div>
-                        <div className="text-sm opacity-90">"{wakeWord}"</div>
+                        <div className="text-sm opacity-90">&quot;{wakeWord}&quot;</div>
                     </div>
                 </div>
             </div>

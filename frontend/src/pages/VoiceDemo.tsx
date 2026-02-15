@@ -94,7 +94,7 @@ export default function VoiceDemo() {
                     </h3>
                     <ol className="list-decimal list-inside space-y-2 text-blue-800 dark:text-blue-200">
                         <li>Click the microphone button to enable voice mode</li>
-                        <li>Say "{config.wakeWord}" to activate</li>
+                        <li>Say &quot;{config.wakeWord}&quot; to activate</li>
                         <li>Speak your command clearly</li>
                         <li>Wait for the response</li>
                         <li>Adjust settings using the gear icon</li>

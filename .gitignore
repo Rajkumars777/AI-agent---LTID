@@ -46,4 +46,14 @@ yarn.lock
 
 # VS Code
 .vscode/
-	
+
+# Test Artifacts and Logs
+*.png
+*.log
+*.xlsx
+repro_output.txt
+repro_result.json
+backend/web_task_*.png
+backend/error_screenshot_*.png
+nlu_debug.log
+frontend/lint_log.txt

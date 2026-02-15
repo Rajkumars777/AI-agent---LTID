@@ -1,3 +1,24 @@
+// S2: Dynamic port discovery — Tauri emits 'backend-ready' event with port
+let resolvedApiBase: string | null = null;
+let portResolve: ((url: string) => void) | null = null;
+const portPromise = new Promise<string>((resolve) => { portResolve = resolve; });
+
+// Called by Tauri event listener or fallback
+export function setBackendPort(port: number) {
+    resolvedApiBase = `http://127.0.0.1:${port}`;
+    if (portResolve) portResolve(resolvedApiBase);
+}
+
+// Dev mode fallback
+if (typeof window !== 'undefined' && !(window as any).__TAURI__) {
+    setBackendPort(8000);
+}
+
+async function getApiBase(): Promise<string> {
+    if (resolvedApiBase) return resolvedApiBase;
+    return portPromise;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Store active abort controllers for cancellation
@@ -13,7 +34,8 @@ export function getCurrentTaskId(): string | null {
 }
 
 export async function fetchHealth() {
-    const res = await fetch(`${API_BASE_URL}/`);
+    const base = await getApiBase();
+    const res = await fetch(`${base}/`);
     return res.json();
 }
 
@@ -27,7 +49,8 @@ export async function chatWithAgent(message: string, taskId?: string) {
     currentTaskId = taskId || generateTaskId();
 
     try {
-        const res = await fetch(`${API_BASE_URL}/agent/chat`, {
+        const base = await getApiBase();
+        const res = await fetch(`${base}/agent/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ input: message, task_id: currentTaskId }),
@@ -55,7 +78,8 @@ export async function cancelOperation(): Promise<boolean> {
     // Then notify the backend
     if (currentTaskId) {
         try {
-            const res = await fetch(`${API_BASE_URL}/agent/cancel`, {
+            const base = await getApiBase();
+            const res = await fetch(`${base}/agent/cancel`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ task_id: currentTaskId })
@@ -70,15 +94,32 @@ export async function cancelOperation(): Promise<boolean> {
 }
 
 export async function listFiles(directory: string = ".") {
-    const res = await fetch(`${API_BASE_URL}/tools/files?directory=${directory}`);
+    const base = await getApiBase();
+    const res = await fetch(`${base}/tools/files?directory=${directory}`);
     return res.json();
 }
 
 export async function browseUrl(url: string) {
-    const res = await fetch(`${API_BASE_URL}/tools/browser/browse`, {
+    const base = await getApiBase();
+    const res = await fetch(`${base}/tools/browser/browse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
     });
     return res.json();
+}
+
+export async function orchestrateWebTask(url: string, action: string, selector?: string) {
+    const base = await getApiBase();
+    try {
+        const res = await fetch(`${base}/api/web-orchestrator`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, action, selector }),
+        });
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        return res.json();
+    } catch (e: any) {
+        return { status: "Failed", error: e.toString() };
+    }
 }

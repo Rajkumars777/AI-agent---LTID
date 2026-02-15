@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "Experience the power of an intelligent workflow automation system. Powered by advanced autonomous reasoning.",
 };
 
+import TauriProvider from "@/components/TauriProvider";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,7 +29,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <TauriProvider>
+          {children}
+        </TauriProvider>
       </body>
     </html>
   );
