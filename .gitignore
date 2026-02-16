@@ -47,3 +47,17 @@ yarn.lock
 # VS Code
 .vscode/
 	
+
+# Build artifacts
+desktop_entry.build/
+desktop_entry.dist/
+*.spec
+
+# Generated data
+downloads/
+backend/downloads/
+*.log
+
+# Screenshots
+*.png
+!frontend/public/*.png
