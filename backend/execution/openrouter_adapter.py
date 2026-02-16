@@ -14,16 +14,17 @@ class OpenRouterAdapter(dspy.LM):
             **kwargs
         }
 
-    def basic_request(self, prompt, **kwargs):
+    def basic_request(self, prompt, json_mode=False, **kwargs):
         params = {**self.kwargs, **kwargs}
         
-        # Remove DSPy specific args that OpenAPI doesn't accept if any
-        # For now, just simplistic implementation
+        # 1. Handle JSON Mode
+        response_format = {"type": "json_object"} if json_mode else None
         
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
+                response_format=response_format,
                 **params
             )
             content = response.choices[0].message.content

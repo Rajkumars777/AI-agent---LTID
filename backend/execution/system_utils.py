@@ -70,7 +70,7 @@ async def execute_generative_command(app_name, prompt):
     """
     Orchestrates parallel app opening and content generation.
     """
-    from capabilities.llm_general import generate_text_content
+    from execution.nlu import generate_text_content
     
     # START BOTH TASKS AT ONCE
     

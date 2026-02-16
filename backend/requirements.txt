@@ -22,6 +22,8 @@ pygetwindow
 pyperclip
 AppOpener
 send2trash
-faster-whisper
 docxtpl
 pdfplumber
+beautifulsoup4
+lxml
+reportlab

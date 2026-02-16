@@ -13,7 +13,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from capabilities.report_schema import ReportSchema, ReportSection, TableConfig
-from capabilities.doc_builder import build_report
+from capabilities.document import build_report
 
 
 # ============================================================

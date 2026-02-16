@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from agent import run_agent
 import asyncio
-from typing import Optional
+from typing import Optional, Any
 import uuid
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -29,7 +29,7 @@ async def chat_with_agent(request: AgentRequest):
         return {"cancelled": True, "task_id": task_id, "steps": []}
     
     try:
-        response = await run_agent(request.input)
+        response = await run_agent(request.input, task_id=task_id)
         
         # Check if cancelled during execution
         if task_id in cancelled_tasks:
@@ -59,6 +59,20 @@ async def cancel_operation(request: CancelRequest):
         return {"success": True, "message": f"Task {task_id} cancelled"}
     
     return {"success": True, "message": f"Task {task_id} marked for cancellation"}
+
+class ResumeRequest(BaseModel):
+    task_id: str
+    data: Any
+
+@router.post("/resume")
+async def resume_task(request: ResumeRequest):
+    """Provide input to a task currently waiting in PauseState."""
+    from execution.interaction import provide_user_input
+    success = provide_user_input(request.task_id, request.data)
+    if success:
+        return {"success": True, "message": "Input received. Task resuming."}
+    else:
+        return {"success": False, "message": f"Task {request.task_id} not currently waiting for input."}
 
 @router.get("/status")
 async def get_status():

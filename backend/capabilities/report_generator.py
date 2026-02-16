@@ -14,7 +14,7 @@ from typing import Optional
 from datetime import datetime
 
 from capabilities.report_schema import ReportSchema, ReportSection, TableConfig
-from capabilities.doc_builder import build_report
+from capabilities.document import build_report
 
 
 # ============================================================

@@ -8,7 +8,7 @@ sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 # Mock dependencies
 sys.modules["capabilities.desktop"] = MagicMock()
-sys.modules["capabilities.llm_general"] = MagicMock()
+# sys.modules["capabilities.llm_general"] = MagicMock() - Removed Redundant
 
 # We need the real NLU
 import dspy

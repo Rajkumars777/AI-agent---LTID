@@ -99,13 +99,11 @@ export function TimelineFeed({ steps, onOptionSelect }: TimelineFeedProps) {
                                     remarkPlugins={[remarkGfm]}
                                     rehypePlugins={[rehypeRaw]}
                                     components={{
-                                        table: ({ node, ...props }) => <div className="overflow-x-auto my-2"><table {...props} className="w-full border-collapse border border-white/10 text-xs" /></div>,
-                                        th: ({ node, ...props }) => <th {...props} className="border border-white/10 p-2 bg-white/5 text-left font-semibold text-white/70" />,
-                                        td: ({ node, ...props }) => <td {...props} className="border border-white/10 p-2 text-white/60 whitespace-nowrap" />,
-                                        p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
-                                        string: ({ node, ...props }: any) => <span {...props} />,
-                                        module: ({ node, ...props }: any) => <span {...props} />,
-                                    } as any}
+                                        table: (props) => <div className="overflow-x-auto my-2"><table {...props} className="w-full border-collapse border border-white/10 text-xs" /></div>,
+                                        th: (props) => <th {...props} className="border border-white/10 p-2 bg-white/5 text-left font-semibold text-white/70" />,
+                                        td: (props) => <td {...props} className="border border-white/10 p-2 text-white/60 whitespace-nowrap" />,
+                                        p: (props) => <p {...props} className="mb-2 last:mb-0" />,
+                                    }}
                                 >
                                     {step.content}
                                 </ReactMarkdown>

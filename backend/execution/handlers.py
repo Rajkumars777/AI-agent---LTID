@@ -8,17 +8,12 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 # Import capabilities
-from capabilities.desktop import (
-    launch_application, type_text, find_and_open_file, 
-    close_application, rename_file, move_file, 
-    find_file_paths, send_key, delete_file
-)
+from capabilities.browser_agent import browser_agent
 from capabilities.excel_manipulation import (
     read_sheet_data, write_cell, append_row, 
     delete_row, set_style, convert_xls_to_xlsx,
     enable_pivot_table_refresh
 )
-
 from capabilities.report_generator import generate_report_from_data
 from capabilities.code_generator import generate_and_run_script
 from execution.system_utils import execute_generative_command
@@ -38,95 +33,9 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
     from execution.interaction import ask_user
 
     try:
-        if action in ["OPEN", "LAUNCH", "PLAY", "VIEW", "SHOW", "GET", "SEARCH"]:
-            tool_used = "Desktop Automation (Open)"
-            # FALLBACK SANITIZATION: Strip "open ", "launch " etc from target if NLU leaked it
-            target = re.sub(r'^(open|launch|get|show|view|find|the|a|an)\s+', '', target, flags=re.IGNORECASE).strip()
-            launch_res = launch_application(target)
-            file_path = None
-            
-            if "Could not find" in launch_res or "not in the system" in launch_res:
-                trace_logs.append(f"App launch failed. Searching for file '{target}'...")
-                file_path = find_and_open_file(target)
-                
-                if isinstance(file_path, dict) and file_path.get("status") == "multiple_files":
-                    # PAUSE AND ASK USER
-                    files = file_path.get("files", [])
-                    question = f"I found multiple files matching '{target}'. Which one should I open?"
-                    options = [{"label": f"Open {os.path.basename(f)}", "value": f"open {f}"} for f in files]
-                    
-                    user_selection = await ask_user(task_id, question, {"options": options})
-                    
-                    if isinstance(user_selection, str) and "open " in user_selection:
-                         target_file = user_selection.replace("open ", "")
-                         result = launch_application(target_file)
-                         file_path = target_file
-                    else:
-                         result = f"I found multiple files: {', '.join([os.path.basename(f) for f in files])}"
-                         attachment = {"type": "options", "data": options}
-                else:
-                    result = str(file_path)
-            else:
-                result = launch_res
-
-            # Media Handling
-            if file_path and "not found" not in str(file_path).lower() and "Found multiple" not in str(file_path) and os.path.exists(str(file_path)):
-                mime, _ = mimetypes.guess_type(str(file_path))
-                if mime:
-                    media_type = None
-                    if mime.startswith("image/"): media_type = "image"
-                    elif mime.startswith("video/"): media_type = "video"
-                    elif mime.startswith("audio/"): media_type = "audio"
-                    
-                    if media_type:
-                        encoded_path = urllib.parse.quote(str(file_path))
-                        attachment = {
-                            "type": media_type,
-                            "url": f"http://localhost:8000/files/stream?path={encoded_path}",
-                            "name": os.path.basename(str(file_path))
-                        }
-                        result = f"Opened/Playing {os.path.basename(str(file_path))}"
-            
-            if "Launched" in result or "Opened" in result:
-                 trace_logs.append("Waiting 3s for app to focus...")
-                 time.sleep(3) 
-                 if any(kw in target.lower() for kw in ["word", "excel", "powerpoint"]):
-                     trace_logs.append("Sending ENTER to create New Document...")
-                     send_key("enter")
-                     time.sleep(1)
-
-        elif action in ["CLOSE", "STOP", "EXIT", "KILL"]:
-            tool_used = "Desktop Automation (Close)"
-            result = close_application(target)
-
-        elif action in ["TYPE", "WRITE"]:
-            tool_used = "Desktop Automation (Type)"
-            is_async = context and context.startswith("GENERATE_ASYNC")
-            app_name = context.split(":", 1)[1] if is_async and ":" in context else "Notepad"
-            
-            if is_async or context == "GENERATE":
-                 trace_logs.append(f"Triggering Parallel Execution for '{app_name}'...")
-                 result = await execute_generative_command(app_name, target)
-            else:
-                 result = type_text(target)
-
-        elif action == "RENAME":
-            tool_used = "Desktop Automation (Rename)"
-            result = rename_file(target, context) if context else "Error: New name not provided."
-
-        elif action == "MOVE":
-            tool_used = "Desktop Automation (Move)"
-            result = move_file(target, context) if context else "Error: Destination not provided."
-
-        elif action in ["DELETE", "REMOVE"]:
-            tool_used = "Desktop Automation (Delete)"
-            result = delete_file(target)
-
-        elif action == "EXCEL_READ":
+        if action == "EXCEL_READ":
             tool_used = "Excel (Read)"
-            if not os.path.exists(target) and not os.path.isabs(target):
-                 found = find_file_paths(target)
-                 if found: target = found[0]
+            target = _resolve_excel_path(target)
             result = read_sheet_data(target, sheet_name=context)
 
         elif action == "EXCEL_WRITE":
@@ -215,18 +124,33 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
                 result = f"❌ Report generation failed: {report_result.get('error', 'Unknown error')}"
 
         elif action == "DYNAMIC_CODE":
-            tool_used = "Dynamic AI Coder"
             task_desc = context if context else "Perform the requested operation"
             target_file = _resolve_dynamic_file(target, task_desc)
-            trace_logs.append(f"Generating custom script for: {task_desc} on {target_file}")
-            is_excel = target_file.lower().endswith(('.xls', '.xlsx', '.csv'))
-            before_view = read_sheet_data(target_file, fmt="html") if is_excel and os.path.exists(target_file) else ""
-            script_result = generate_and_run_script(task=task_desc, file_path=target_file)
-            if is_excel and os.path.exists(target_file):
-                after_view = read_sheet_data(target_file, fmt="html")
-                result = _format_excel_result(before_view, after_view, script_result)
+            
+            # Check if this is a data retrieval task (stock, prices, exchange rates, etc.)
+            task_lower = task_desc.lower()
+            data_keywords = ["stock", "closing", "opening", "price", "retrieve", "fetch",
+                             "nikkei", "sensex", "nifty", "s&p", "dow", "nasdaq",
+                             "exchange rate", "currency", "gold", "silver", "crypto",
+                             "bitcoin", "market", "share price"]
+            is_data_task = any(kw in task_lower for kw in data_keywords)
+            
+            if is_data_task:
+                tool_used = "Data Retriever"
+                trace_logs.append(f"Retrieving data: {task_desc}")
+                from capabilities.data_retriever import retrieve_data_and_create_excel
+                result = retrieve_data_and_create_excel(task=task_desc, file_path=target_file)
             else:
-                result = script_result
+                tool_used = "Dynamic AI Coder"
+                trace_logs.append(f"Generating custom script for: {task_desc} on {target_file}")
+                is_excel = target_file.lower().endswith(('.xls', '.xlsx', '.csv'))
+                before_view = read_sheet_data(target_file, fmt="html") if is_excel and os.path.exists(target_file) else ""
+                script_result = generate_and_run_script(task=task_desc, file_path=target_file)
+                if is_excel and os.path.exists(target_file):
+                    after_view = read_sheet_data(target_file, fmt="html")
+                    result = _format_excel_result(before_view, after_view, script_result)
+                else:
+                    result = script_result
 
         elif action == "WEB_CONTROL":
             tool_used = "AI Browser Agent"
@@ -269,6 +193,9 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
                     "paytm": "https://www.paytm.com",
                     "imdb": "https://www.imdb.com",
                     "snapdeal": "https://www.snapdeal.com",
+                    "irctc": "https://www.irctc.co.in",
+                    "weather": "https://weather.com",
+                    "example": "https://www.example.com",
                 }
                 for name, site_url in site_map.items():
                     if name in clean_target.lower() or name in clean_context.lower():
@@ -284,22 +211,10 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
 
             trace_logs.append(f"Browser Agent: navigating to {url}, goal: {goal}")
 
-            # 3. LLM function for the agent loop
-            import dspy
-            def llm_fn(prompt):
-                 # Bypass dspy.Predict parsing issues by calling LM directly
-                 try:
-                     resp = dspy.settings.lm(prompt)[0]
-                     print(f"[Handler llm_fn] Response length={len(resp)}, first 200 chars: {repr(resp[:200])}", flush=True)
-                     return resp
-                 except Exception as e:
-                     print(f"[Handler llm_fn] LLM call error: {e}", flush=True)
-                     return ""
-
-            # 4. Run in thread (sync Playwright cannot run on async loop)
+            # 3. Run in thread (sync Playwright cannot run on async loop)
             try:
                 result = await asyncio.to_thread(
-                    browser_agent.run_task, url, goal, llm_fn, 12
+                    browser_agent.run_task, url, goal
                 )
             except Exception as e:
                 import traceback
@@ -329,6 +244,44 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
                 "content": answer
             }
 
+        elif action == "OPEN":
+            tool_used = "OS Shell"
+            from capabilities.desktop_ops import open_application
+            # Try to resolve file path first, if not found, treat as app name
+            resolved = _resolve_file_robust(target)
+            final_target = resolved if os.path.exists(resolved) else target
+            
+            trace_logs.append(f"Opening: {final_target}")
+            result = open_application(final_target)
+            
+        elif action == "CLOSE":
+            tool_used = "OS Shell"
+            from capabilities.desktop_ops import close_application
+            trace_logs.append(f"Closing: {target}")
+            result = close_application(target)
+            
+        elif action == "DELETE":
+            tool_used = "OS Shell"
+            from capabilities.desktop_ops import delete_file
+            resolved = _resolve_file_robust(target)
+            trace_logs.append(f"Deleting: {resolved}")
+            result = delete_file(resolved)
+
+        elif action == "RENAME":
+            tool_used = "OS Shell"
+            from capabilities.desktop_ops import rename_file
+            resolved = _resolve_file_robust(target)
+            trace_logs.append(f"Renaming {resolved} to {context}")
+            result = rename_file(resolved, context)
+
+        elif action == "MOVE":
+            tool_used = "OS Shell"
+            from capabilities.desktop_ops import move_file
+            resolved = _resolve_file_robust(target)
+            dest = _resolve_file_robust(context) if context else ""
+            trace_logs.append(f"Moving {resolved} to {dest}")
+            result = move_file(resolved, dest)
+
         else:
             result = f"Action '{action}' not implemented yet."
     
@@ -347,16 +300,15 @@ async def handle_action(action: str, target: str, context: Optional[str], user_i
 
 # Helper Functions
 def _resolve_excel_path(target: str) -> str:
-    # CLEANUP: Strip "open ", "the ", etc. in case NLU leaked it
+    from utils.resolver import resolve_file_arg
+    # CLEANUP: Strip common prefix words
     target = re.sub(r'^(open|launch|get|show|view|find|the|a|an)\s+', '', str(target), flags=re.IGNORECASE).strip()
     
-    if not os.path.exists(target) and not os.path.isabs(target):
-         found = find_file_paths(target)
-         if found: target = found[0]
-    if target.lower().endswith(".xls"):
-         new_target = convert_xls_to_xlsx(target)
-         if new_target: target = new_target
-    return target
+    full_path = resolve_file_arg(target)
+    if full_path.lower().endswith(".xls"):
+         new_target = convert_xls_to_xlsx(full_path)
+         if new_target: return new_target
+    return full_path
 
 def _format_excel_result(before, after, action_msg) -> str:
     return f"""<div class="excel-comparison"><div><h4>Before Update</h4>{before}</div><div><h4>After Update</h4>{after}</div></div><p><strong>Action:</strong> {action_msg}</p>"""
@@ -391,13 +343,10 @@ def _resolve_row_index(target: str, context: str, logs: list) -> int:
     except: return 0
 
 def _resolve_file_robust(target: str) -> str:
+    from utils.resolver import resolve_file_arg
     # CLEANUP: Strip "open ", "the ", etc. in case NLU leaked it
     target = re.sub(r'^(open|launch|get|show|view|find|the|a|an)\s+', '', str(target), flags=re.IGNORECASE).strip()
-    if os.path.exists(target): return target
-    if not os.path.isabs(target):
-        found = find_file_paths(target)
-        if found: return found[0]
-    return target # Fallback
+    return resolve_file_arg(target)
 
 def _resolve_dynamic_file(target: str, task_desc: str) -> str:
     if target == "active_workbook" or (not os.path.exists(target) and "." not in target):

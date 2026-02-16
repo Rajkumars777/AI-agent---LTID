@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 # Mock dependencies BEFORE importing agent
 sys.modules["capabilities.desktop"] = MagicMock()
-sys.modules["capabilities.llm_general"] = MagicMock()
+# sys.modules["capabilities.llm_general"] = MagicMock() - Removed Redundant
 sys.modules["execution.nlu"] = MagicMock()
 
 # We need to mock system_utils because it imports pygetwindow which might fail in this headless-like env if not careful
