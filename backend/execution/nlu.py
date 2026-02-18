@@ -226,19 +226,41 @@ RULES:
 5. Extract parameters precisely from the user's message.
 6. If the user says "type", "enter", or "write", use the 'type_on_screen' tool.
 7. For compound commands (e.g. "Open Calculator and type 123"), RETURN MULTIPLE TOOLS.
-   - First tool: open_app
-   - Second tool: type_on_screen
+   - First call 'open_app' with target "Calculator"
+   - Second call 'type_on_screen' with text "123"
    - Do NOT collapse them into one answer.
 
-8. For messaging (e.g. "WhatsApp 'hi' to Mom"):
-   - open_app("WhatsApp")
-   - type_on_screen("Mom")
-   - press_key("enter")
-   - type_on_screen("hi")
-   - press_key("enter")
+8. For messaging (e.g. "WhatsApp 'hi' to Mom"), return a sequence of tools:
+   - Call 'open_app' with target "WhatsApp"
+   - Call 'type_on_screen' with text "Mom"
+   - Call 'press_key' with key "enter"
+   - Call 'type_on_screen' with text "hi"
+   - Call 'press_key' with key "enter"
+
+9. DO NOT use XML tags like <function>. Use standard tool calling.
 """
 
         messages = [{"role": "system", "content": system_prompt}]
+
+        # ── ONE-SHOT EXAMPLE (Forces correct tool format) ──
+        messages.append({"role": "user", "content": "Open Notepad"})
+        messages.append({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call_example_1",
+                "type": "function",
+                "function": {
+                    "name": "open_app",
+                    "arguments": "{\"target\": \"Notepad\"}"
+                }
+            }]
+        })
+        messages.append({
+            "role": "tool",
+            "tool_call_id": "call_example_1",
+            "name": "open_app",
+            "content": "[Success] Opened Notepad"
+        })
 
         # Add recent chat history as proper message objects
         # Limit to last MAX_HISTORY_MSGS to avoid token overflow
