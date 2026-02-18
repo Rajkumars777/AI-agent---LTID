@@ -25,8 +25,8 @@ from tools.generator import generator
 # ─────────────────────────────────────────────────────
 
 EVOLUTION_TIMEOUT  = 30.0   # max seconds to wait for tool generation
-LLM_MODEL          = "llama-3.3-70b-versatile"
-FALLBACK_MODEL     = "llama-3.1-8b-instant"
+LLM_MODEL          = "llama-3.1-8b-instant"
+FALLBACK_MODEL     = "llama-3.3-70b-versatile"
 MAX_HISTORY_MSGS   = 10     # max past messages to include for context
 
 # ─────────────────────────────────────────────────────

@@ -370,22 +370,10 @@ CORE_TOOLS = [
     },
 
     # ── ORCHESTRATOR SIGNALS ──────────────────────────
-
-    {
-        "name": "MULTI_STEP_COMPLETE",
-        "description": "Internal signal for completed multi-step tasks.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-        "executor": lambda p: _exec_via_handler("MULTI_STEP_COMPLETE", p)
-    },
-
-    {
-        "name": "MULTI_STEP_FAILED",
-        "description": "Internal signal for failed multi-step tasks.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-        "executor": lambda p: _exec_via_handler("MULTI_STEP_FAILED", p)
-    },
+    # (Removed: these are internal signals, not LLM tools)
 
 ]
+
 
 
 # ─────────────────────────────────────────────────────
