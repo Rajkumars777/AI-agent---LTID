@@ -118,6 +118,10 @@ class DesktopAutomation:
     # CLICK
     # ─────────────────────────────────────
 
+    # ─────────────────────────────────────
+    # CLICK
+    # ─────────────────────────────────────
+
     def click_text(
         self,
         text:         str,
@@ -128,24 +132,59 @@ class DesktopAutomation:
     ) -> str:
         """
         Finds text on screen via OCR and clicks it.
-        Retries if not found immediately (UI may still be loading).
+        Uses UICache to speed up repeated clicks.
         """
         import pygetwindow as gw
+        from capabilities.ui_cache import ui_cache
 
         # Use remembered window if none provided
         if not window_title and self.last_window_title:
             window_title = self.last_window_title
-            print(f"[RPA] Using remembered window: '{window_title}'")
+            # print(f"[RPA] Using remembered window: '{window_title}'") # Reduce noise
 
+        # ── FAST PATH: Check Cache ──
+        if window_title:
+             # Try to get cached relative params
+             cached = ui_cache.get(window_title, text)
+             if cached:
+                 rel_x, rel_y = cached
+                 
+                 # Verify window is still there and get absolute coords
+                 region = self._get_window_region(window_title)
+                 if region:
+                     win_left, win_top, _, _ = region
+                     abs_x = win_left + rel_x
+                     abs_y = win_top + rel_y
+                     
+                     print(f"[RPA] ⚡ Fast-clicking cached '{text}' at ({abs_x}, {abs_y})")
+                     self._move_and_click(abs_x, abs_y, double_click)
+                     return f"✅ Clicked '{text}' (cached)"
+                 else:
+                     print(f"[RPA] Window '{window_title}' lost — invalidating cache")
+                     ui_cache.invalidate_app(window_title)
+
+        # ── SLOW PATH: OCR Scan ──
         for attempt in range(retries):
-            print(f"[RPA] Click attempt {attempt + 1}/{retries} for '{text}'...")
+            print(f"[RPA] OCR scan attempt {attempt + 1}/{retries} for '{text}'...")
 
             region = self._get_window_region(window_title)
-
+            
+            # If region is None but we need to scan, we scan full screen (default)
+            # But finding relative coords requires a reference window
+            
             coords = vision_engine.find_text_center(text, fuzzy=fuzzy, region=region)
             if coords:
                 x, y = coords
                 self._move_and_click(x, y, double_click)
+                
+                # Cache the result if we have a stable window reference
+                if window_title and region:
+                    win_left, win_top, _, _ = region
+                    rel_x = x - win_left
+                    rel_y = y - win_top
+                    
+                    ui_cache.set(window_title, text, (rel_x, rel_y))
+                
                 return f"✅ Clicked '{text}' at ({x}, {y})"
 
             if attempt < retries - 1:
