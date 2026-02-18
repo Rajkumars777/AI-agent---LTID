@@ -17,6 +17,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from tools.registry import registry
+from tools.generator import generator
+
 # ─────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────
