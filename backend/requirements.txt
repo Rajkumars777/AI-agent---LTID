@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 dspy-ai
+langgraph
 playwright
 python-dotenv
 pytest
@@ -23,3 +24,8 @@ openai
 yfinance
 faster-whisper
 requests
+pyinstaller
+opencv-python
+pytesseract
+pillow
+groq

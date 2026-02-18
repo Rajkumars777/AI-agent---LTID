@@ -29,7 +29,11 @@ async def chat_with_agent(request: AgentRequest):
         return {"cancelled": True, "task_id": task_id, "steps": []}
     
     try:
-        response = await run_agent(request.input, task_id=task_id)
+        # ✅ Track task for cancellation
+        task = asyncio.create_task(run_agent(request.input, task_id=task_id))
+        active_tasks[task_id] = task
+        
+        response = await task
         
         # Check if cancelled during execution
         if task_id in cancelled_tasks:
@@ -44,6 +48,10 @@ async def chat_with_agent(request: AgentRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Clean up active task
+        if task_id in active_tasks:
+            del active_tasks[task_id]
 
 @router.post("/cancel")
 async def cancel_operation(request: CancelRequest):

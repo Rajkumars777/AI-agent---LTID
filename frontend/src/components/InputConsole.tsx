@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Command, Sparkles, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import { orchestrateWebTask } from "@/lib/api";
+import { orchestrateWebTask, getApiBase } from "@/lib/api";
 
 interface InputConsoleProps {
     onSend: (message: string) => void;
@@ -99,7 +99,8 @@ export function InputConsole({ onSend, loading, lastCommand, onWebTaskComplete }
             const formData = new FormData();
             formData.append('file', audioBlob, 'voice_command.wav');
 
-            const response = await fetch('http://localhost:8000/api/voice/transcribe', {
+            const base = await getApiBase();
+            const response = await fetch(`${base}/api/voice/transcribe`, {
                 method: 'POST',
                 body: formData,
             });
@@ -145,19 +146,16 @@ export function InputConsole({ onSend, loading, lastCommand, onWebTaskComplete }
 
     const runWebTask = async (action: string) => {
         const urlToCheck = input.trim();
-        // Special case for Nikkei - we know the URL
-        const targetUrl = action === "get_nikkei_closing"
-            ? "https://indexes.nikkei.co.jp/en/nkave/"
-            : sanitizeUrl(urlToCheck);
+        const targetUrl = sanitizeUrl(urlToCheck);
 
-        if (!targetUrl && action !== "get_nikkei_closing") {
+        if (!targetUrl) {
             // setWebStatus("⚠️ Please enter a URL above first.");
             if (onWebTaskComplete) onWebTaskComplete({ type: 'error', content: "⚠️ Please enter a URL above first." });
             return;
         }
 
         // If it's a manual scrape, update the input to reflect the sanitized URL
-        if (action !== "get_nikkei_closing" && targetUrl !== input) {
+        if (targetUrl !== input) {
             setInput(targetUrl);
         }
 
@@ -300,9 +298,6 @@ export function InputConsole({ onSend, loading, lastCommand, onWebTaskComplete }
                             </button>
                             <button onClick={() => runWebTask("download_file")} className="flex-1 btn-xs bg-green-600/20 hover:bg-green-600/40 text-green-400 py-2 rounded-lg text-xs font-medium border border-green-500/30 transition-all">
                                 ⬇️ Download
-                            </button>
-                            <button onClick={() => runWebTask("get_nikkei_closing")} className="flex-1 btn-xs bg-red-600/20 hover:bg-red-600/40 text-red-400 py-2 rounded-lg text-xs font-medium border border-red-500/30 transition-all">
-                                🇯🇵 Nikkei
                             </button>
                         </div>
                     </motion.div>

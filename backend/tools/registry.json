@@ -1,0 +1,132 @@
+{
+  "compress_excel_to_zip": {
+    "name": "compress_excel_to_zip",
+    "description": "Compress an Excel file (e.g., data_backup.xlsx) into a zip archive. Use when the user asks to zip a spreadsheet or any file into a .zip.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "source_path": {
+          "type": "string",
+          "description": "Path to the Excel file that should be compressed (e.g., 'data_backup.xlsx')."
+        },
+        "zip_path": {
+          "type": "string",
+          "description": "Destination path for the created zip file (e.g., 'data_backup.zip')."
+        }
+      },
+      "required": [
+        "source_path",
+        "zip_path"
+      ]
+    }
+  },
+  "check_file_for_word": {
+    "name": "check_file_for_word",
+    "description": "Searches a file for a specific word or phrase. Use when user says: find, search, contains, check, locate, word",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "Path to the file to be examined"
+        },
+        "search_term": {
+          "type": "string",
+          "description": "Word or phrase to look for within the file"
+        }
+      },
+      "required": [
+        "file_path",
+        "search_term"
+      ]
+    }
+  },
+  "take_screenshot": {
+    "name": "take_screenshot",
+    "description": "Captures the current screen. Use when user says: screenshot, screen capture, take screenshot, capture screen, snapshot, screen shot",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "the filename to save the screenshot as"
+        }
+      },
+      "required": [
+        "filename"
+      ]
+    },
+    "_is_core": false
+  },
+  "basic_arithmetic_operation": {
+    "name": "basic_arithmetic_operation",
+    "description": "Performs simple arithmetic operations like addition, subtraction, multiplication, and division. Use when user says: calculate, add, sum, subtract, multiply",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "num1": {
+          "type": "number",
+          "description": "The first number"
+        },
+        "operator": {
+          "type": "string",
+          "description": "The arithmetic operation to perform (+, -, *, /)"
+        },
+        "num2": {
+          "type": "number",
+          "description": "The second number"
+        }
+      },
+      "required": [
+        "num1",
+        "operator",
+        "num2"
+      ]
+    },
+    "_is_core": false
+  },
+  "move_file_to_folder": {
+    "name": "move_file_to_folder",
+    "description": "Moves a file to a specified folder. Use when user says: move, file, folder, transfer, relocate, copy",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "description": "The name of the file to be moved"
+        },
+        "destination_folder": {
+          "type": "string",
+          "description": "The path to the destination folder"
+        }
+      },
+      "required": [
+        "file_name",
+        "destination_folder"
+      ]
+    },
+    "_is_core": false
+  },
+  "send_message_tool": {
+    "name": "send_message_tool",
+    "description": "Sends a message to a recipient. Use when user says: send message, send email, send text, send notification, send note",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "The content of the message to be sent"
+        },
+        "recipient": {
+          "type": "string",
+          "description": "The recipient of the message"
+        }
+      },
+      "required": [
+        "message",
+        "recipient"
+      ]
+    },
+    "_is_core": false
+  }
+}

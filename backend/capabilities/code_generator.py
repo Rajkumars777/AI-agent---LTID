@@ -15,30 +15,63 @@ class ScriptGenerator(dspy.Signature):
     1. Use 'pandas' or 'openpyxl' for Excel/CSV files.
     2. The script must be self-contained (imports included).
     3. **WINDOWS PATHS**: ALWAYS use raw strings for file paths! Use `r'C:\\path\\to\\file'` format.
-    4. **CREATE/GENERATE DATA**: When creating new data:
+    4. **CREATE/GENERATE DATA (Excel/CSV)**:
        - Create the DataFrame with the requested data
        - Save to a TEMP file: `import tempfile; temp_path = os.path.join(tempfile.gettempdir(), 'generated_data.xlsx')`
        - Save: `df.to_excel(temp_path, index=False)`
        - Open in Excel: `os.startfile(temp_path)`
        - Print: `print("Opened in Excel! Use File > Save As to save to your preferred location.")`
-    5. **MODIFY EXISTING**: If modifying an EXISTING file, save changes back to the file and open it.
-    6. **READ/ANALYZE**: For reading/analysis tasks, print as HTML: `print(df.to_html(classes='generated-table', index=False))`
+    5. **MODIFY EXISTING (Excel/CSV)**:
+       - If modifying an EXISTING file, save changes back to the file and open it.
+       - Use `pandas` or `openpyxl` to update cells, formulas, and Pivot-related ranges.
+    6. **READ/ANALYZE (tabular data)**:
+       - For reading/analysis tasks, print as HTML: `print(df.to_html(classes='generated-table', index=False))`
     7. Do NOT use placeholder file paths. Use the exact 'file_path' provided if it exists.
     8. Handle potential errors gracefully.
     9. Output ONLY valid Python code. No markdown blocks. No newlines inside strings.
-    10. **XLS FORMAT**: If the input file is `.xls`, READ it using `pd.read_excel`. Save to `.xlsx`.
+    10. **XLS FORMAT**: If the input file is `.xls`, READ it using `pd.read_excel`. Save to `.xlsx` before writing.
     11. **FIELD MAPPING**: Map natural language column names to actual column names.
+
+    DOCUMENT INTELLIGENCE & FORMAT CONVERSION:
+    12. **PDF TEXT/TABLE EXTRACTION**:
+        - Use `import fitz` (PyMuPDF) or `import pymupdf as fitz` for text extraction:
+          `doc = fitz.open(pdf_path); text = "".join(page.get_text() for page in doc)`
+        - Use `import pdfplumber` for table extraction:
+          `with pdfplumber.open(pdf_path) as pdf: ... page.extract_table() ...`
+    13. **WORD (DOCX) TEMPLATE FILLING**:
+        - Use `from docx import Document`
+        - Load document: `doc = Document(docx_path)`
+        - Replace placeholders: loop over `doc.paragraphs` and `doc.tables` and use `para.text = para.text.replace(old, new)`
+        - Save to a new file (do NOT overwrite the template unless explicitly asked).
+    14. **FORMAT CONVERSION (SAVE AS)**:
+        - **CSV ⇄ XLSX**: use pandas: `pd.read_csv(...).to_excel(...); pd.read_excel(...).to_csv(...)`
+        - **Excel/Word → PDF on Windows**:
+          - Use `import win32com.client, pythoncom`
+          - Initialize COM: `pythoncom.CoInitialize()`
+          - **Excel to PDF**:
+                excel = win32com.client.DispatchEx("Excel.Application")
+                wb = excel.Workbooks.Open(excel_path)
+                wb.ExportAsFixedFormat(0, pdf_path)
+                wb.Close(False); excel.Quit()
+          - **Word to PDF**:
+                word = win32com.client.DispatchEx("Word.Application")
+                doc = word.Documents.Open(docx_path)
+                doc.SaveAs(pdf_path, FileFormat=17)
+                doc.Close(False); word.Quit()
+    15. After creating any output document (Excel, CSV, DOCX, PDF), if appropriate:
+        - Call `os.startfile(output_path)` to open it for the user.
+        - Print a short HTML or text summary of what was done.
     
     DATA RETRIEVAL GUIDELINES (for tasks involving fetching data from the internet):
-    12. **STOCK DATA**: Use `yfinance` library to fetch stock/index data.
+    16. **STOCK DATA**: Use `yfinance` library to fetch stock/index data.
         - Example: `import yfinance as yf; data = yf.download("^N225", period="10d")`
         - Common tickers: ^N225 (Nikkei), ^GSPC (S&P 500), ^DJI (Dow Jones), ^IXIC (NASDAQ),
           ^BSESN (BSE Sensex), ^NSEI (Nifty 50), AAPL, GOOGL, MSFT, TSLA, etc.
-    13. **WEB DATA**: Use `requests` + `beautifulsoup4` for web scraping.
+    17. **WEB DATA**: Use `requests` + `beautifulsoup4` for web scraping.
         - Example: `import requests; from bs4 import BeautifulSoup; resp = requests.get(url); soup = BeautifulSoup(resp.text, 'html.parser')`
-    14. **ROUNDING**: When asked to round values, use `.round(2)` on DataFrame columns.
-    15. **DATE FORMATTING**: Format dates as strings: `df['Date'] = df.index.strftime('%Y-%m-%d')` for datetime indices.
-    16. **COMBINED TASKS**: If task involves BOTH data retrieval AND file creation:
+    18. **ROUNDING**: When asked to round values, use `.round(2)` on DataFrame columns.
+    19. **DATE FORMATTING**: Format dates as strings: `df['Date'] = df.index.strftime('%Y-%m-%d')` for datetime indices.
+    20. **COMBINED TASKS**: If task involves BOTH data retrieval AND file creation:
         - Fetch the data first
         - Process/clean/round it
         - Create DataFrame

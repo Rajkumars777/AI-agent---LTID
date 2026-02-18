@@ -6,8 +6,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { VoiceStatus, VoiceConfig, defaultVoiceStatus, defaultVoiceConfig } from '../types/voice';
 
-const WS_URL = 'ws://localhost:8000/ws/voice';
-const API_URL = 'http://localhost:8000/api/voice';
+const WS_URL = 'ws://127.0.0.1:8000/ws/voice';
+const API_URL = 'http://127.0.0.1:8000/api/voice';
 
 export function useVoiceInterface() {
     const [status, setStatus] = useState<VoiceStatus>(defaultVoiceStatus);

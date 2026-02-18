@@ -61,3 +61,10 @@ backend/downloads/
 # Screenshots
 *.png
 !frontend/public/*.png
+
+backend/build/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
+backend/venv/
+
+frontend/src-tauri/

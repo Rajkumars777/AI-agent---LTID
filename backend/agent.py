@@ -1,6 +1,6 @@
 import dspy
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, Annotated, List, Dict
 import operator
 import os
 from datetime import datetime
@@ -16,13 +16,13 @@ class AgentState(TypedDict):
     task_id: str
     messages: Annotated[List[str], operator.add]
     intermediate_steps: List[str]
-    chat_history: str
+    chat_history: List[Dict[str, str]] # Changed from str to list of dicts
 
 # Configure DSPy
 openrouter_key = os.getenv("OPENROUTER_API_KEY")
 
 if openrouter_key:
-    from execution.openrouter_adapter import OpenRouterAdapter
+    from llm.openrouter_adapter import OpenRouterAdapter
     print("Using OpenRouter Adapter...")
     lm = OpenRouterAdapter(
         model='google/gemini-2.0-flash-001',
@@ -37,13 +37,11 @@ class MemoryManager:
         self.history = deque(maxlen=max_turns * 2)
 
     def add_interaction(self, user_cmd, agent_response):
-        self.history.append(f"User: {user_cmd}")
-        self.history.append(f"Agent: {agent_response}")
+        self.history.append({"role": "user", "content": str(user_cmd)})
+        self.history.append({"role": "assistant", "content": str(agent_response)})
 
-    def get_context_string(self):
-        if not self.history:
-            return "No previous context."
-        return "\n".join(self.history)
+    def get_messages(self) -> List[Dict[str, str]]:
+        return list(self.history)
 
 agent_memory = MemoryManager()
 
@@ -68,103 +66,68 @@ async def execute_tool(state: AgentState):
     from routers.events import emit_event
     await emit_event(task_id, "Thinking", {"message": f"Analyzing: {user_input}"})
 
-    # 1. Unified Command Extraction (Fast Path + LLM)
-    from execution.nlu import get_commands
-    chat_history = state.get('chat_history', '')
+    # 1. Native Tool-Calling & Evolution
+    from execution.nlu import get_commands_dynamic
+    from tools.registry import registry
+    from tools.generator import generator
+    generator.registry = registry # Fix circular import dependency
+    import tools.core_tools # Ensures core tools are registered
+    
+    chat_history = state.get('chat_history', []) # Default to empty list
     try:
-        commands = get_commands(user_input, chat_history=chat_history)
+        commands = await get_commands_dynamic(user_input, chat_history=chat_history)
         await emit_event(task_id, "NLU_Success", {"commands": [c.dict() for c in commands]})
     except Exception as e:
+        print(f"AGENT ERROR: {e}")
         commands = []
-        steps.append({
-             "type": "Reasoning",
-             "content": f"NLU Error: {str(e)}",
-             "timestamp": datetime.now().strftime("%I:%M:%S %p")
-        })
-        await emit_event(task_id, "Error", {"message": f"NLU Error: {str(e)}"})
+        await emit_event(task_id, "Error", {"message": f"NLU/Evolution Error: {str(e)}"})
 
-    # If NLU fails or returns empty
     if not commands:
-         steps.append({
-            "type": "Reasoning",
-            "content": f"No commands extracted from '{user_input}'",
-            "timestamp": datetime.now().strftime("%I:%M:%S %p")
-        })
-         return {"messages": ["I didn't understand that command."], "intermediate_steps": steps}
+         return {"messages": ["I couldn't fulfill that request."], "intermediate_steps": steps}
 
     final_results = []
     
-    # Optimizer: Merge OPEN + GENERATE_ASYNC
-    optimized_commands = []
-    skip_next = False
-    
-    for i in range(len(commands)):
-        if skip_next:
-            skip_next = False
-            continue
-            
-        cmd = commands[i]
-        
-        if cmd.action in ["OPEN", "LAUNCH"] and i + 1 < len(commands):
-            next_cmd = commands[i+1]
-            if next_cmd.action in ["TYPE", "WRITE"] and next_cmd.context == "GENERATE_ASYNC":
-                next_cmd.context = f"GENERATE_ASYNC:{cmd.target}"
-                continue
-        
-        optimized_commands.append(cmd)
-        
-    commands = optimized_commands
-
-    # 2. Execution Loop
-    from execution.handlers import handle_action
-    from utils.resolver import resolve_file_arg
-    
+    # 2. Dynamic Execution Loop via Registry
     for cmd in commands:
-        action = cmd.action.upper()
-        target = cmd.target
-        context = cmd.context
+        action = cmd.action
+        params = cmd.params
         
-        # SMART RESOLUTION: If target or context looks like a file, resolve to absolute path
-        if target and "." in target and not target.startswith("http") and not os.path.isabs(target):
-             target = resolve_file_arg(target)
-        if context and "." in context and not context.startswith("http") and not os.path.isabs(context) and "/" not in context and "\\" not in context:
-             # Only resolve context if it looks like a filename, not a sentence
-             if len(context.split()) == 1:
-                 context = resolve_file_arg(context)
-
-        await emit_event(task_id, "ActionStarted", {"action": action, "target": target})
-
-        # Execute Action via Handler
-        exec_res = await handle_action(action, target, context, user_input, task_id=task_id, reasoning=cmd.reasoning)
-        
-        result = exec_res["result"]
-        trace_logs = exec_res["trace_logs"]
-        attachment = exec_res["attachment"]
-        
-        await emit_event(task_id, "ActionResult", {"action": action, "result": result, "logs": trace_logs})
-
-        final_results.append(result)
-
-        # Create Step Content
-        block_content = f"**Task:** {action} {target}"
-        if context:
-            block_content += f" (in {context})"
+        # Scenario A: Standard Tool Execution
+        if action != "ANSWER":
+            await emit_event(task_id, "ActionStarted", {"action": action, "target": str(params)})
             
-        if trace_logs:
-            block_content += "\n" + "\n".join([f"- {Log}" for Log in trace_logs])
+            # Execute via Registry (Supports hot-reloaded tools!)
+            raw_result = await registry.execute(action, params)
             
-        block_content += f"\n**Result:** {result}"
-        
-        step_data = {
-            "type": "Action",
-            "content": block_content,
-            "timestamp": datetime.now().strftime("%I:%M:%S %p")
-        }
-        
-        if attachment:
-            step_data["attachment"] = attachment
+            # Normalize result (Handle rich dicts vs plain strings)
+            display_result = ""
+            attachment = None
             
-        steps.append(step_data)
+            if isinstance(raw_result, dict):
+                display_result = raw_result.get("result", str(raw_result))
+                attachment = raw_result.get("attachment")
+            else:
+                display_result = str(raw_result)
+            
+            await emit_event(task_id, "ActionResult", {"action": action, "result": display_result})
+            final_results.append(display_result)
+            
+            steps.append({
+                "type": "Action",
+                "content": display_result,
+                "timestamp": datetime.now().strftime("%I:%M:%S %p"),
+                "attachment": attachment
+            })
+        
+        # Scenario B: Direct Answer
+        else:
+            ans = params.get("text", "I'm not sure how to respond.")
+            final_results.append(ans)
+            steps.append({
+                "type": "Reasoning",
+                "content": ans,
+                "timestamp": datetime.now().strftime("%I:%M:%S %p")
+            })
     
     return {"messages": final_results, "intermediate_steps": steps}
 
@@ -177,11 +140,13 @@ workflow.add_edge("agent", END)
 app = workflow.compile()
 
 async def run_agent(user_input: str, task_id: str = "default"):
-    current_context = agent_memory.get_context_string()
+    history = agent_memory.get_messages()
     system_ctx = get_system_context()
-    full_history = current_context + system_ctx
     
-    inputs = {"input": user_input, "task_id": task_id, "messages": [], "chat_history": full_history}
+    # Merge history with current system context for NLU
+    merged_history = history + [{"role": "system", "content": system_ctx}]
+    
+    inputs = {"input": user_input, "task_id": task_id, "messages": [], "chat_history": merged_history}
     result = await app.ainvoke(inputs)
     
     # Update memory with first result message

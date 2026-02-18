@@ -6,14 +6,25 @@ class SafetyViolation(Exception):
     pass
 
 # Whitelist of allowed modules
+# NOTE:
+# - We allow powerful libraries (os, win32com, pdf/Word libs) but still block
+#   dangerous *operations* below via DANGEROUS_CALLS.
 ALLOWED_MODULES = {
-    'pandas', 'pd', 'openpyxl', 'math', 'json', 'datetime', 
+    'pandas', 'pd', 'openpyxl', 'math', 'json', 'datetime',
     're', 'string', 'collections', 'itertools', 'numpy', 'np',
     'os', 'tempfile', 'io', 'sys', 'time', 'csv',
-    # Data retrieval
+    # Data retrieval / web
     'yfinance', 'yf', 'requests', 'bs4', 'urllib',
     # Date/time
     'dateutil', 'pytz', 'calendar',
+    # Document / PDF intelligence
+    'pymupdf',      # PyMuPDF
+    'fitz',         # Alternate import name for PyMuPDF
+    'pdfplumber',
+    'docx',         # python-docx
+    # Windows Office automation (for Save As / format conversions)
+    'win32com',     # win32com.client
+    'pythoncom',
 }
 
 # Blacklist of dangerous functions/attributes

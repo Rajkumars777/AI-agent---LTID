@@ -1,25 +1,25 @@
-// S2: Dynamic port discovery — Tauri emits 'backend-ready' event with port
+// Backend port discovery for Tauri sidecar architecture
 let resolvedApiBase: string | null = null;
 let portResolve: ((url: string) => void) | null = null;
 const portPromise = new Promise<string>((resolve) => { portResolve = resolve; });
 
-// Called by Tauri event listener or fallback
+// Called by TauriProvider once the backend is confirmed ready
 export function setBackendPort(port: number) {
     resolvedApiBase = `http://127.0.0.1:${port}`;
     if (portResolve) portResolve(resolvedApiBase);
 }
 
-// Dev mode fallback
-if (typeof window !== 'undefined' && !(window as any).__TAURI__) {
-    setBackendPort(8000);
-}
-
-async function getApiBase(): Promise<string> {
+export async function getApiBase(): Promise<string> {
     if (resolvedApiBase) return resolvedApiBase;
+
+    // Fallback for web-only development
+    if (typeof window !== "undefined" && !resolvedApiBase) {
+        resolvedApiBase = "http://127.0.0.1:8000";
+        return resolvedApiBase;
+    }
+
     return portPromise;
 }
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Store active abort controllers for cancellation
 let currentAbortController: AbortController | null = null;

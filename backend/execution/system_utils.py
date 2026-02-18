@@ -33,9 +33,9 @@ def open_app(app_name):
     # For now, simplistic approach as per plan, but we should probably use the robust launch_application from capabilities.
     # However, the user plan implied a simple open_app. 
     # Let's import the robust one to be safe.
-    from capabilities.desktop import launch_application
+    from capabilities.desktop_ops import open_application
     print(f"DEBUG: Launching {app_name}...")
-    launch_application(app_name)
+    open_application(app_name)
 
 import pyperclip
 

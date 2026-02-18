@@ -104,6 +104,8 @@ class BrowserAgent:
         self._page: Optional[Page] = None
         self._element_map: Dict[int, str] = {}
         self._lock = threading.Lock()
+        self._element_discovery = None  # Will be initialized when page is ready
+        self._use_dynamic_discovery = True  # Feature flag
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -134,6 +136,11 @@ class BrowserAgent:
         self._page.add_init_script(
             "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
         )
+        
+        # Initialize dynamic element discovery
+        from capabilities.element_discovery import create_element_discovery
+        self._element_discovery = create_element_discovery(self._page)
+        
         return "Browser started."
 
     def stop(self):
@@ -162,19 +169,28 @@ class BrowserAgent:
     # Navigation
     # ------------------------------------------------------------------
     def navigate(self, url: str) -> str:
+        """Navigate to URL, ensuring browser is started first"""
+        # Always ensure browser is running
         if not self._page:
+            print("[Agent] Browser not started, auto-starting...")
             self.start()
+            
         try:
+            print(f"[Agent] Navigating to: {url}")
             self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
             time.sleep(2)
-            return f"Navigated to {url} (Title: {self._page.title()})"
+            title = self._page.title()
+            print(f"[Agent] Successfully loaded: {title}")
+            return f"Navigated to {url} (Title: {title})"
         except Exception as e:
-            if any(k in str(e).lower() for k in ["closed", "detached"]):
+            # Try to recover by restarting browser
+            if any(k in str(e).lower() for k in ["closed", "detached", "target closed"]):
                 try:
+                    print("[Agent] Browser disconnected, restarting...")
                     self.restart()
                     self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     time.sleep(2)
-                    return f"Navigated to {url} (Title: {self._page.title()})"
+                    return f"Navigated to {url} (Title: {self._page.title()}) [after restart]"
                 except Exception as e2:
                     return f"Navigation failed after restart: {e2}"
             return f"Navigation failed: {e}"
@@ -194,6 +210,49 @@ class BrowserAgent:
                     return sel
             except:
                 continue
+        return None
+    
+    def _find_smart(self, element_type: str, selectors: Optional[str] = None, timeout: int = 5000) -> Optional[str]:
+        """
+        Smart element finding: try hardcoded selectors first, fall back to dynamic discovery.
+        
+        Args:
+            element_type: Type of element (search_input, button, price, rating, etc.)
+            selectors: Optional comma-separated fallback selectors
+            timeout: Timeout in milliseconds
+        
+        Returns:
+            Working CSS selector or None
+        """
+        # 1. Try hardcoded selectors if provided (fast path)
+        if selectors:
+            found = self._find(selectors, timeout)
+            if found:
+                return found
+        
+        # 2. Use dynamic element discovery if enabled
+        if self._use_dynamic_discovery and self._element_discovery:
+            try:
+                if element_type == "search_input":
+                    return self._element_discovery.find_search_input()
+                elif element_type == "search_button":
+                    return self._element_discovery.find_button("search")
+                elif element_type == "submit_button":
+                    return self._element_discovery.find_button("submit")
+                elif element_type == "first_result":
+                    return self._element_discovery.find_first_result()
+                elif element_type == "price":
+                    return self._element_discovery.find_price()
+                elif element_type == "rating":
+                    return self._element_discovery.find_rating()
+                elif element_type == "add_to_cart":
+                    return self._element_discovery.find_add_to_cart_button()
+                else:
+                    # Generic LLM-based search
+                    return self._element_discovery.find_by_llm(element_type)
+            except Exception as e:
+                print(f"[BrowserAgent] Dynamic discovery failed for {element_type}: {e}")
+        
         return None
 
     def _safe_click(self, selector: str, timeout: int = 5000) -> bool:
@@ -278,271 +337,106 @@ class BrowserAgent:
         return False
 
     # ------------------------------------------------------------------
-    # GOAL PARSER — extracts structured intent from natural language
-    # ------------------------------------------------------------------
-    def _parse_goal(self, goal: str) -> dict:
-        gl = goal.lower()
-        result = {
-            "search_query": None,
-            "filters": [],
-            "sort": None,
-            "extract": [],
-            "click_first": False,
-            "click_tab": None,
-            "navigate_section": None,
-            "add_to_cart": False,
-            "form_fields": {},
-            "conditions": [],
-            "compare": False,
-        }
-
-        # --- Search query ---
-        quoted = re.findall(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]', goal)
-        if not quoted:
-            quoted = re.findall(r"'([^']+)'", goal)
-        if quoted:
-            result["search_query"] = quoted[0]
-        else:
-            m = re.search(r'search\s+(?:for\s+)?(.+?)(?:\s*,|\s+then|\s+and|\s+filter|\s+sort|\s+open|\s+click|$)', gl)
-            if m:
-                result["search_query"] = m.group(1).strip().strip('"\'')
-
-        # --- Filters ---
-        # Price
-        pm = re.search(r'(?:price\s+)?(?:under|below|less than|max|upto|up to)\s*[₹$]?\s*([\d,]+)', gl)
-        if pm:
-            result["filters"].append(("price_under", pm.group(1).replace(",", "")))
-
-        # Star rating
-        sm = re.search(r'(\d)\s*(?:star|★|⭐)\s*(?:&\s*)?(?:above|up|and above|\+)?', gl)
-        if sm:
-            result["filters"].append(("star_rating", sm.group(1)))
-
-        # Size
-        szm = re.search(r'(?:filter\s+)?size\s+(\d+)', gl)
-        if szm:
-            result["filters"].append(("size", szm.group(1)))
-
-        # Upload date (YouTube)
-        if "upload date" in gl or "upload_date" in gl:
-            result["filters"].append(("upload_date", True))
-
-        # RAM
-        ramm = re.search(r'(\d+)\s*gb\s*ram', gl)
-        if ramm:
-            result["filters"].append(("ram", ramm.group(1)))
-
-        # SSD only
-        if "ssd only" in gl or "ssd" in gl and "filter" in gl:
-            result["filters"].append(("ssd", True))
-
-        # --- Sort ---
-        if "low to high" in gl or "lowest" in gl or "cheapest" in gl:
-            result["sort"] = "low_to_high"
-        elif "high to low" in gl or "highest" in gl or "most expensive" in gl:
-            result["sort"] = "high_to_low"
-
-        # --- Extract ---
-        if any(k in gl for k in ["extract the price", "get the price", "extract price", "find the price"]):
-            result["extract"].append("price")
-        elif "price" in gl and ("compare" in gl or "best" in gl or "cheapest" in gl):
-            result["extract"].append("price")
-
-        if any(k in gl for k in ["get the rating", "extract rating", "find the rating", "rating"]):
-            result["extract"].append("rating")
-
-        if "compare" in gl and "price" in gl:
-            result["compare"] = True
-            result["extract"].append("compare_prices")
-
-        if "population" in gl:
-            result["extract"].append("population")
-
-        if "temperature" in gl or "weather" in gl:
-            result["extract"].append("temperature")
-
-        # --- Click first result ---
-        if any(k in gl for k in ["open the first", "click first", "open first", "click the first",
-                                   "click a reliable", "click first result"]):
-            result["click_first"] = True
-
-        # --- Click tab ---
-        tab_m = re.search(r'(?:click|select|go to)\s+(?:the\s+)?(\w+)\s+tab', gl)
-        if tab_m:
-            result["click_tab"] = tab_m.group(1).capitalize()
-        elif "click images" in gl or "images tab" in gl:
-            result["click_tab"] = "Images"
-
-        # --- Section navigation ---
-        sec_m = re.search(r'navigate\s+to\s+["\']?(\w+(?:\s+\w+)?)["\']?\s*section', gl)
-        if sec_m:
-            result["navigate_section"] = sec_m.group(1).strip().title()
-
-        # --- Add to cart ---
-        if "add" in gl and "cart" in gl:
-            result["add_to_cart"] = True
-            result["click_first"] = True  # must open product first
-
-        # --- Form fields ---
-        form_patterns = [
-            (r'(?:fill|enter|type)\s+name\s+(?:as\s+)?["\']([^"\']+)["\']', "name"),
-            (r'(?:fill|enter|type)\s+email\s+(?:as\s+)?["\']([^"\']+)["\']', "email"),
-            (r'(?:fill|enter|type)\s+message\s+(?:as\s+)?["\']([^"\']+)["\']', "message"),
-            (r'(?:enter|type)\s+username\s+["\']([^"\']+)["\']', "username"),
-            (r'(?:enter|type)\s+password\s+["\']([^"\']+)["\']', "password"),
-        ]
-        for pattern, field_name in form_patterns:
-            fm = re.search(pattern, gl)
-            if fm:
-                result["form_fields"][field_name] = fm.group(1)
-
-        # --- Conditions ---
-        cond_m = re.search(r'if\s+(?:the\s+)?price\s+(?:is\s+)?(?:below|under|less than)\s+[₹$]?([\d,]+)', gl)
-        if cond_m:
-            result["conditions"].append(("price_below", int(cond_m.group(1).replace(",", ""))))
-
-        cond_r = re.search(r'if\s+(?:the\s+)?rating\s+(?:is\s+)?(?:above|over|greater than|more than)\s+([\d.]+)', gl)
-        if cond_r:
-            result["conditions"].append(("rating_above", float(cond_r.group(1))))
-
-        # --- Special queries ---
-        if "most viewed" in gl or "most popular" in gl:
-            result["sort"] = "view_count"
-        if "highest rating" in gl or "highest rated" in gl or "best rated" in gl:
-            result["sort"] = "best_rating"
-        if "latest" in gl or "most recent" in gl or "newest" in gl:
-            result["filters"].append(("upload_date", True))
-
-        return result
-
-    # ------------------------------------------------------------------
-    # MAIN ENTRY: run_task
-    # ------------------------------------------------------------------
-    def run_task(self, url: str, goal: str, llm_fn=None, max_turns: int = 12) -> str:
-        logs = []
-
-        # 1. Navigate
-        if url:
-            nav = self.navigate(url)
-            logs.append(nav)
-            if "failed" in nav.lower():
-                return nav
-
-        # 2. Identify site + parse goal
-        site = self._identify_site(url or "")
-        parsed = self._parse_goal(goal)
-        print(f"[Agent] site={site}, parsed={json.dumps({k:str(v) for k,v in parsed.items()}, indent=2)}", flush=True)
-
-        # 3. Dismiss popups (Flipkart login, cookie banners)
-        self._dismiss_popups(site)
-
-        # 4. SEARCH
-        if parsed["search_query"]:
-            r = self._do_search(site, parsed["search_query"])
-            logs.append(r)
-            print(f"[Agent] Search: {r}", flush=True)
-
-        # 5. FILTERS
-        for ftype, fval in parsed["filters"]:
-            r = self._do_filter(site, ftype, fval)
-            logs.append(r)
-            print(f"[Agent] Filter({ftype}): {r}", flush=True)
-
-        # 6. SORT
-        if parsed["sort"]:
-            r = self._do_sort(site, parsed["sort"])
-            logs.append(r)
-            print(f"[Agent] Sort: {r}", flush=True)
-
-        # 7. CLICK FIRST RESULT
-        if parsed["click_first"]:
-            r = self._do_click_first(site)
-            logs.append(r)
-            print(f"[Agent] ClickFirst: {r}", flush=True)
-
-        # 8. CLICK TAB
-        if parsed["click_tab"]:
-            r = self._do_click_tab(parsed["click_tab"])
-            logs.append(r)
-            print(f"[Agent] Tab: {r}", flush=True)
-
-        # 9. SECTION NAVIGATION
-        if parsed["navigate_section"]:
-            r = self._do_navigate_section(parsed["navigate_section"])
-            logs.append(r)
-            print(f"[Agent] Section: {r}", flush=True)
-
-        # 10. FORM FILL
-        if parsed["form_fields"]:
-            r = self._do_form_fill(parsed["form_fields"])
-            logs.append(r)
-            print(f"[Agent] FormFill: {r}", flush=True)
-
-        # 11. ADD TO CART
-        if parsed["add_to_cart"]:
-            r = self._do_add_to_cart(site)
-            logs.append(r)
-            print(f"[Agent] Cart: {r}", flush=True)
-
-        # 12. EXTRACT DATA
-        extracted = {}
-        for etype in parsed["extract"]:
-            val = self._do_extract(site, etype)
-            extracted[etype] = val
-            logs.append(f"Extracted {etype}: {val}")
-            print(f"[Agent] Extract({etype}): {val}", flush=True)
-
-        # 13. CONDITIONS
-        for cond_type, cond_val in parsed["conditions"]:
-            r = self._evaluate_condition(site, cond_type, cond_val, extracted)
-            logs.append(r)
-            print(f"[Agent] Condition: {r}", flush=True)
-
-        # 14. Build result summary
-        return self._build_summary(parsed, extracted, logs, url)
-
-    # ------------------------------------------------------------------
     # SEARCH
     # ------------------------------------------------------------------
     def _do_search(self, site: str, query: str) -> str:
+        """
+        Robust search that works on ANY website.
+        Ensures browser is running, page is loaded, and uses multiple fallback strategies.
+        """
+        # CRITICAL: Ensure browser is started
+        if not self._page:
+            print("[Agent] Browser not started, starting now...")
+            self.start()
+            time.sleep(2)
+        
         config = SITE_CONFIG.get(site, {})
-
-        # Try site-specific selector first
+        
+        # Give page time to fully load before searching
+        try:
+            self._page.wait_for_load_state("networkidle", timeout=5000)
+        except:
+            time.sleep(2)  # Fallback wait
+        
+        # Try site-specific selector first, with dynamic fallback
         search_sel = config.get("search_input")
-        if search_sel:
-            found = self._find(search_sel)
-            if found:
-                if self._type_in(found, query):
-                    submit = config.get("search_submit")
-                    if submit:
-                        sub_sel = self._find(submit, timeout=3000)
-                        if sub_sel:
-                            self._safe_click(sub_sel)
-                        else:
-                            self._press_enter()
+        found = self._find_smart("search_input", search_sel, timeout=10000)
+        
+        if found:
+            print(f"[Agent] Found search input via: {found}")
+            if self._type_in(found, query):
+                submit = config.get("search_submit")
+                if submit:
+                    # Try configured submit button
+                    sub_sel = self._find_smart("search_button", submit, timeout=5000)
+                    if sub_sel:
+                        print(f"[Agent] Clicking search button: {sub_sel}")
+                        self._safe_click(sub_sel)
                     else:
+                        print("[Agent] No submit button, pressing Enter")
                         self._press_enter()
-                    time.sleep(config.get("wait", 3))
-                    return f"✅ Searched for '{query}' on {site or 'page'}"
+                else:
+                    print("[Agent] No submit button configured, pressing Enter")
+                    self._press_enter()
+                time.sleep(config.get("wait", 3))
+                return f"✅ Searched for '{query}' on {site or 'page'}"
+            else:
+                print(f"[Agent] ❌ Failed to type into search input: {found}")
 
-        # Generic fallback: try common input selectors
+        # FALLBACK 1: Try generic input selectors without smart finding
+        print("[Agent] Primary search failed, trying generic selectors...")
         generic_inputs = [
             'input[type="search"]',
-            'input[type="text"][name*="search"]',
-            'input[type="text"][name*="q"]',
-            'input[placeholder*="Search" i]',
-            'input[placeholder*="search" i]',
-            'input[aria-label*="Search" i]',
+            'input[name="search_query"]',  # YouTube
+            'input[name*="search" i]',
+            'input[name*="q" i]',
+            'input[name="q"]',
             'textarea[name="q"]',
+            'input[placeholder*="Search" i]',
+            'input[aria-label*="Search" i]',
+            'input[id*="search" i]',
+            '#search',
+            'input[type="text"]',
         ]
+        
         for sel in generic_inputs:
-            if self._find(sel, timeout=2000):
-                if self._type_in(sel, query):
-                    self._press_enter()
-                    time.sleep(3)
-                    return f"✅ Searched for '{query}' (generic input)"
+            try:
+                if self._find(sel, timeout=3000):
+                    print(f"[Agent] Found via generic selector: {sel}")
+                    if self._type_in(sel, query):
+                        # Look for any submit button nearby
+                        for submit_sel in ['button[type="submit"]', 'button:has-text("Search")', '#search-icon-legacy']:
+                            if self._find(submit_sel, timeout=2000):
+                                self._safe_click(submit_sel)
+                                time.sleep(3)
+                                return f"✅ Searched for '{query}' (generic fallback)"
+                        # No button, try Enter
+                        self._press_enter()
+                        time.sleep(3)
+                        return f"✅ Searched for '{query}' (generic fallback with Enter)"
+            except Exception as e:
+                print(f"[Agent] Generic selector {sel} failed: {e}")
+                continue
 
-        return f"⚠️ Could not find search input on {site or 'page'}"
+        # FALLBACK 2: Find ANY visible text input and try it
+        print("[Agent] Trying to find ANY visible input...")
+        try:
+            all_inputs = self._page.locator('input[type="text"], input[type="search"], input:not([type="hidden"]):not([type="submit"])').all()
+            for inp in all_inputs[:5]:  # Try first 5 visible inputs
+                try:
+                    if inp.is_visible():
+                        print(f"[Agent] Trying visible input...")
+                        inp.fill(query)
+                        time.sleep(0.5)
+                        self._press_enter()
+                        time.sleep(3)
+                        return f"✅ Searched for '{query}' (found visible input)"
+                except:
+                    continue
+        except Exception as e:
+            print(f"[Agent] Fallback input search failed: {e}")
+
+        return f"⚠️ Could not find search input on {site or 'page'} after all attempts"
 
     # ------------------------------------------------------------------
     # FILTERS
