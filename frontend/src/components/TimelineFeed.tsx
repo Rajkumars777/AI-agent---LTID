@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Activity, Play, CheckCircle2, Clock, Edit2, Save, X, FileText, FileSpreadsheet, File } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -9,6 +9,7 @@ import rehypeRaw from "rehype-raw";
 import React, { useState, useEffect } from "react";
 // Dynamic import for Tauri to avoid SSR issues
 import dynamic from 'next/dynamic';
+import { ResultCard } from "./ResultCard";
 
 export type Step = {
     type: "Reasoning" | "Decision" | "Action";
@@ -29,113 +30,171 @@ interface TimelineFeedProps {
 }
 
 export function TimelineFeed({ steps, onOptionSelect }: TimelineFeedProps) {
+    const [collapsedSteps, setCollapsedSteps] = useState<number[]>([]);
+
     if (steps.length === 0) return null;
 
+    const toggleCollapse = (index: number) => {
+        setCollapsedSteps(prev =>
+            prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+        );
+    };
+
     return (
-        <div className="w-full mx-auto mt-12 px-4 relative pb-20">
-            <div className="absolute left-8 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent" />
+        <div className="w-full max-w-5xl mx-auto mt-16 px-6 relative pb-32">
+            {/* Main Timeline Thread */}
+            <div className="absolute left-[34px] top-0 bottom-0 w-px bg-gradient-to-b from-primary/50 via-primary/10 to-transparent" />
 
-            <div className="space-y-8">
-                {steps.map((step, i) => (
-                    <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="relative pl-16 group"
-                    >
-                        {/* Timeline Node */}
-                        <div className={cn(
-                            "absolute left-[26px] -translate-x-1/2 top-0 w-3 h-3 rounded-full border-2 z-10 bg-background transition-colors duration-300",
-                            step.type === "Reasoning" && "border-blue-500 group-hover:bg-blue-500",
-                            step.type === "Decision" && "border-yellow-500 group-hover:bg-yellow-500",
-                            step.type === "Action" && "border-green-500 group-hover:bg-green-500"
-                        )} />
+            <div className="space-y-12">
+                {steps.map((step, i) => {
+                    const isLast = i === steps.length - 1;
+                    const isCollapsed = collapsedSteps.includes(i) || (step.type === "Reasoning" && !isLast && steps.some(s => s.type === "Action"));
 
-                        <div className={cn(
-                            "p-5 rounded-2xl border transition-all duration-300 hover:scale-[1.01] relative overflow-hidden",
-                            "bg-[#0F0F16] backdrop-blur-md", // Darker solid/semi-transparent background for readability
-                            step.type === "Reasoning" && "border-blue-500/20 hover:border-blue-500/40 shadow-lg shadow-blue-900/10",
-                            step.type === "Decision" && "border-yellow-500/20 hover:border-yellow-500/40 shadow-lg shadow-yellow-900/10",
-                            step.type === "Action" && "border-emerald-500/20 hover:border-emerald-500/40 shadow-lg shadow-emerald-900/10"
-                        )}>
-                            {/* Subtle top highlight */}
+                    return (
+                        <motion.div
+                            key={i}
+                            initial={{ opacity: 0, x: -30 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1, duration: 0.8, type: "spring" }}
+                            className="relative pl-20 group"
+                        >
+                            {/* Timeline Node refinement */}
                             <div className={cn(
-                                "absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent",
-                                step.type === "Reasoning" && "via-blue-500/20",
-                                step.type === "Decision" && "via-yellow-500/20",
-                                step.type === "Action" && "via-emerald-500/20"
-                            )} />
-
-                            <div className="flex justify-between items-start mb-3">
-                                <div className="flex items-center gap-2">
-                                    <div className={cn(
-                                        "p-1.5 rounded-lg border",
-                                        step.type === "Reasoning" && "bg-blue-500/10 border-blue-500/20 text-blue-400",
-                                        step.type === "Decision" && "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
-                                        step.type === "Action" && "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                    )}>
-                                        {step.type === "Reasoning" && <Bot className="w-4 h-4" />}
-                                        {step.type === "Decision" && <Activity className="w-4 h-4" />}
-                                        {step.type === "Action" && <Play className="w-4 h-4" />}
-                                    </div>
-                                    <span className={cn(
-                                        "text-xs font-bold uppercase tracking-wider",
-                                        step.type === "Reasoning" && "text-blue-400",
-                                        step.type === "Decision" && "text-yellow-400",
-                                        step.type === "Action" && "text-emerald-400"
-                                    )}>
-                                        {step.type}
-                                    </span>
-                                </div>
-                                <span className="text-xs text-slate-500 font-mono flex items-center gap-1.5 bg-black/20 px-2 py-1 rounded-md border border-white/5">
-                                    <Clock className="w-3 h-3" />
-                                    {step.timestamp}
-                                </span>
+                                "absolute left-[34px] -translate-x-1/2 top-4 w-4 h-4 rounded-full border-2 z-10 transition-all duration-500",
+                                isLast && "ring-4 ring-primary/20",
+                                step.type === "Reasoning" && "border-blue-500 bg-blue-500/20",
+                                step.type === "Decision" && "border-amber-500 bg-amber-500/20",
+                                step.type === "Action" && "border-emerald-500 bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                            )}>
+                                {isLast && <div className="absolute inset-0 rounded-full bg-primary animate-ping opacity-40" />}
                             </div>
 
-                            <div className="text-slate-300 leading-relaxed text-sm font-light prose prose-invert max-w-none">
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    rehypePlugins={[rehypeRaw]}
-                                    components={{
-                                        table: (props) => <div className="overflow-x-auto my-2"><table {...props} className="w-full border-collapse border border-white/10 text-xs" /></div>,
-                                        th: (props) => <th {...props} className="border border-white/10 p-2 bg-white/5 text-left font-semibold text-white/70" />,
-                                        td: (props) => <td {...props} className="border border-white/10 p-2 text-white/60 whitespace-nowrap" />,
-                                        p: (props) => <p {...props} className="mb-2 last:mb-0" />,
-                                    }}
-                                >
-                                    {step.content}
-                                </ReactMarkdown>
+                            {/* Card Construction */}
+                            <div className={cn(
+                                "premium-card p-6 border-white/5 relative",
+                                step.type === "Reasoning" && "opacity-80 hover:opacity-100",
+                                isLast && "border-primary/20 shadow-[0_0_50px_-12px_oklch(0.68_0.28_280/0.15)]"
+                            )}>
+                                {/* Glass Edge Glow */}
+                                <div className={cn(
+                                    "absolute top-0 left-0 bottom-0 w-[2px] opacity-40",
+                                    step.type === "Reasoning" && "bg-blue-500",
+                                    step.type === "Decision" && "bg-amber-500",
+                                    step.type === "Action" && "bg-emerald-500"
+                                )} />
 
-                                {/* Options Buttons */}
-                                {step.attachment && step.attachment.type === "options" && (
-                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        {(step.attachment as any).data.map((opt: any, idx: number) => (
+                                {/* Card Header */}
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn(
+                                            "p-2 rounded-xl",
+                                            step.type === "Reasoning" && "bg-blue-500/10 text-blue-400",
+                                            step.type === "Decision" && "bg-amber-500/10 text-amber-400",
+                                            step.type === "Action" && "bg-emerald-500/10 text-emerald-400"
+                                        )}>
+                                            {step.type === "Reasoning" && <Bot className="w-5 h-5" />}
+                                            {step.type === "Decision" && <Activity className="w-5 h-5" />}
+                                            {step.type === "Action" && <Play className="w-5 h-5" />}
+                                        </div>
+                                        <div>
+                                            <span className={cn(
+                                                "text-[10px] font-black uppercase tracking-[0.2em]",
+                                                step.type === "Reasoning" && "text-blue-500/70",
+                                                step.type === "Decision" && "text-amber-500/70",
+                                                step.type === "Action" && "text-emerald-500/70"
+                                            )}>
+                                                {step.type}
+                                            </span>
+                                            <h4 className="text-sm font-bold text-foreground leading-none mt-1">
+                                                {step.type === "Reasoning" ? "Analytical Thinking" : step.type === "Decision" ? "Strategy Selection" : "Process Execution"}
+                                            </h4>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-[10px] text-muted-foreground font-mono tracking-tighter opacity-70">
+                                            {step.timestamp}
+                                        </span>
+                                        {step.type === "Reasoning" && !isLast && (
                                             <button
-                                                key={idx}
-                                                onClick={() => onOptionSelect && onOptionSelect(opt.value)}
-                                                className="px-3 py-2 text-left bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300 transition-colors flex items-center gap-2 group/btn"
+                                                onClick={() => toggleCollapse(i)}
+                                                className="text-[10px] font-bold text-primary hover:text-white uppercase tracking-widest transition-colors"
                                             >
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 group-hover/btn:bg-emerald-400" />
-                                                <span className="truncate">{opt.label}</span>
+                                                {isCollapsed ? "[ Show ]" : "[ Hide ]"}
                                             </button>
-                                        ))}
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
-                                {/* Web Result Attachment */}
-                                {step.attachment && step.attachment.type === "web_result" && (
-                                    <WebResultViewer
-                                        initialData={(step.attachment as any).data}
-                                        url={(step.attachment as any).url}
-                                        screenshot={(step.attachment as any).screenshot}
-                                    />
+                                {/* Card Content */}
+                                <AnimatePresence initial={false}>
+                                    {!isCollapsed && (
+                                        <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: "auto", opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            className="overflow-hidden"
+                                        >
+                                            <div className="text-foreground leading-relaxed text-base font-light pt-2 border-t border-border mt-4">
+                                                {step.type !== "Action" && (
+                                                    <div className="prose dark:prose-invert max-w-none">
+                                                        <ReactMarkdown
+                                                            remarkPlugins={[remarkGfm]}
+                                                            rehypePlugins={[rehypeRaw]}
+                                                            components={{
+                                                                table: (props) => <div className="overflow-x-auto my-6"><table {...props} className="w-full border-collapse border border-border text-sm" /></div>,
+                                                                p: (props) => <p {...props} className="mb-4 last:mb-0" />,
+                                                                strong: (props) => <strong {...props} className="text-primary font-bold" />,
+                                                            }}
+                                                        >
+                                                            {step.content}
+                                                        </ReactMarkdown>
+                                                    </div>
+                                                )}
+
+                                                {/* Options / Structured Result / Attachments */}
+                                                <div className={cn(step.type !== "Action" && "mt-6")}>
+                                                    {/* Structured Result Visualization */}
+                                                    {step.type === "Action" && !step.attachment && (
+                                                        <ResultCard type="Action" content={step.content} />
+                                                    )}
+
+                                                    {/* Existing Attachments */}
+                                                    {step.attachment && step.attachment.type === "options" && (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            {(step.attachment as any).data.map((opt: any, idx: number) => (
+                                                                <button
+                                                                    key={idx}
+                                                                    onClick={() => onOptionSelect && onOptionSelect(opt.value)}
+                                                                    className="px-4 py-3 text-left glass-pane hover:bg-white/10 rounded-xl text-sm text-slate-100 transition-all flex items-center gap-3 group/btn"
+                                                                >
+                                                                    <div className="w-2 h-2 rounded-full bg-primary/40 group-hover/btn:bg-primary shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
+                                                                    <span className="font-medium">{opt.label}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {step.attachment && step.attachment.type === "web_result" && (
+                                                        <WebResultViewer
+                                                            initialData={(step.attachment as any).data}
+                                                            url={(step.attachment as any).url}
+                                                            screenshot={(step.attachment as any).screenshot}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                {isCollapsed && (
+                                    <p className="text-xs text-slate-500 italic mt-2">Reasoning hidden to streamline view...</p>
                                 )}
                             </div>
-                        </div>
-                    </motion.div>
-                ))}
+                        </motion.div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -176,46 +235,8 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
     };
 
     const handleSaveAs = async (format: string) => {
-        setSaveStatus("Saving...");
-
-        try {
-            // Dynamic imports for Tauri
-            const { save } = await import('@tauri-apps/plugin-dialog');
-            const { orchestrateWebTask } = await import('@/lib/api');
-
-            // 1. Open Save Dialog
-            const filePath = await save({
-                filters: [{
-                    name: format.toUpperCase(),
-                    extensions: [format]
-                }]
-            });
-
-            if (!filePath) {
-                setSaveStatus(null);
-                return; // User cancelled
-            }
-
-            // 2. Send to Backend with Path
-            const payload = {
-                data: data,
-                format: format,
-                filepath: filePath // Backend will use this
-            };
-
-            const result = await orchestrateWebTask("ignored", "save_result_as_file", JSON.stringify(payload));
-
-            if (result.file) {
-                setSaveStatus(`Saved to ${result.file}`);
-                setTimeout(() => setSaveStatus(null), 3000);
-            } else {
-                setSaveStatus(`Error: ${result.status}`);
-            }
-
-        } catch (e) {
-            console.error(e);
-            setSaveStatus(`Error: ${e}`);
-        }
+        setSaveStatus("Saving capability removed");
+        setTimeout(() => setSaveStatus(null), 3000);
     };
 
     const isTable = Array.isArray(data) && data.length > 0 && typeof data[0] === 'object';
@@ -242,20 +263,6 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
                         {isEditing ? <CheckCircle2 className="w-3 h-3" /> : <Edit2 className="w-3 h-3" />}
                         {isEditing ? "Done" : "Edit"}
                     </button>
-
-                    <div className="w-px h-6 bg-white/10 mx-1" />
-
-                    <button onClick={() => handleSaveAs('docx')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 transition-all">
-                        <FileText className="w-3 h-3" /> Word
-                    </button>
-                    <button onClick={() => handleSaveAs('pdf')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 transition-all">
-                        <File className="w-3 h-3" /> PDF
-                    </button>
-                    {isTable && (
-                        <button onClick={() => handleSaveAs('xlsx')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-all">
-                            <FileSpreadsheet className="w-3 h-3" /> Excel
-                        </button>
-                    )}
                 </div>
             </div>
 

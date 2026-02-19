@@ -13,6 +13,8 @@ A powerful AI-powered desktop automation and RPA (Robotic Process Automation) ag
 - 🎤 **Voice Dictation** - Click mic, speak, verify, and execute (100% local & free)
 - 🔍 **Smart File Search** - Fast cached search across your system
 - 📄 **Document Processing** - Extract text from PDF/Word, convert formats
+- 🌐 **AI Web Automation** - Agent can browse, search, and extract data from the web using Playwright
+
 
 ---
 
@@ -36,8 +38,8 @@ cd AI-agent---LTID
 ### Step 2: Setup Backend
 
 ```powershell
-# Navigate to backend
-cd backend
+# Navigate to src
+cd src
 
 # Create virtual environment (recommended)
 python -m venv venv
@@ -53,7 +55,7 @@ playwright install
 
 ### Step 3: Configure Environment
 
-Create a `.env` file in the `backend/` folder:
+Create a `.env` file in the `src/` folder:
 
 ```env
 # Required: Choose ONE LLM provider
@@ -73,7 +75,7 @@ Get your API key:
 ### Step 4: Run Backend
 
 ```powershell
-cd backend
+cd src
 python main.py
 ```
 
@@ -146,7 +148,7 @@ npm run dev
 
 ```
 AI-agent---LTID/
-├── backend/                    # Python FastAPI Backend
+├── src/                        # Python FastAPI Backend
 │   ├── main.py                 # 🚀 Entry point - FastAPI app
 │   ├── agent.py                # 🧠 Main agent logic & command routing
 │   ├── requirements.txt        # Python dependencies
@@ -247,7 +249,7 @@ npm install
 
 ### "API key not found" error
 
-- Make sure `.env` file exists in `backend/` folder
+- Make sure `.env` file exists in `src/` folder
 - Check that API key is correctly set (no extra spaces)
 
 ### Voice not working

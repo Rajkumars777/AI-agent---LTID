@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { HeroSection } from "@/components/HeroSection";
 import { InputConsole } from "@/components/InputConsole";
 import { TimelineFeed, Step } from "@/components/TimelineFeed";
@@ -9,7 +9,8 @@ import BrowserViewport from "@/components/BrowserViewport";
 
 import { chatWithAgent, cancelOperation, generateTaskId } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { StopCircle, Edit3, RotateCcw, Globe } from "lucide-react";
+import { StopCircle, Edit3, RotateCcw, Globe, Sun, Moon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function Dashboard() {
   const [steps, setSteps] = useState<Step[]>([]);
@@ -20,6 +21,16 @@ export default function Dashboard() {
   const [isBrowserMode, setIsBrowserMode] = useState(false);
   const [browserUrl, setBrowserUrl] = useState("https://google.com");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isDark, setIsDark] = useState(true);
+
+  // Sync theme with document class
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [isDark]);
 
   // Handle cancel operation
   const handleCancel = useCallback(async () => {
@@ -85,21 +96,6 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  const handleWebTaskComplete = (result: any) => {
-    const newStep: Step = {
-      type: "Action",
-      content: `**Web Task Completed**: ${result.status}`,
-      timestamp: new Date().toLocaleTimeString(),
-      attachment: {
-        type: "web_result",
-        data: result.data,
-        url: result.url,
-        screenshot: result.screenshot
-      }
-    };
-    setSteps(prev => [...prev, newStep]);
-  };
-
   const toggleBrowserMode = async () => {
     const newMode = !isBrowserMode;
     setIsBrowserMode(newMode);
@@ -117,36 +113,68 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="min-h-screen bg-[#050510] relative overflow-hidden font-sans selection:bg-purple-500/30 flex flex-col">
-      {/* Background Gradients */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px] animate-pulse delay-1000" />
+    <main className="min-h-screen bg-background relative overflow-hidden font-sans selection:bg-primary/30 flex flex-col">
+      {/* Dynamic Background Elements */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[160px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[140px] animate-pulse delay-1000" />
       </div>
 
       {/* Floating Controls */}
-      {/* 1. Top Left: Browser Mode Toggle */}
-      <div className="fixed top-6 left-6 z-50">
-        <button
-          onClick={toggleBrowserMode}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-lg backdrop-blur-md ${isBrowserMode
-            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
-            : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-            }`}
-        >
-          <Globe className="w-4 h-4" />
-          {isBrowserMode ? "Browser Active" : "Browser Mode"}
-        </button>
-      </div>
+      <div className="fixed top-8 left-8 right-8 flex justify-between items-center z-[100] pointer-events-none">
+        <div className="pointer-events-auto">
+          <button
+            onClick={toggleBrowserMode}
+            className={cn(
+              "flex items-center gap-2.5 px-5 py-2.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all shadow-2xl backdrop-blur-xl border",
+              isBrowserMode
+                ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/50 shadow-emerald-500/20"
+                : "bg-secondary text-muted-foreground border-border hover:bg-secondary/80 hover:border-border/80"
+            )}
+          >
+            <Globe className={cn("w-4 h-4", isBrowserMode && "animate-spin-slow")} />
+            {isBrowserMode ? "Browser Active" : "Browser Mode"}
+          </button>
+        </div>
 
-      {/* 2. Top Right: History Toggle */}
-      <div className="fixed top-6 right-6 z-50">
-        <button
-          onClick={() => setIsHistoryOpen(true)}
-          className="p-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 transition-all hover:scale-105 shadow-lg backdrop-blur-md"
-        >
-          <RotateCcw className="w-5 h-5" />
-        </button>
+        <div className="flex gap-4 pointer-events-auto">
+          {/* Theme Toggle */}
+          <button
+            onClick={() => setIsDark(!isDark)}
+            className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 transition-all hover:scale-110 shadow-2xl backdrop-blur-xl group relative overflow-hidden"
+          >
+            <AnimatePresence mode="wait">
+              {isDark ? (
+                <motion.div
+                  key="moon"
+                  initial={{ y: 20, opacity: 0, rotate: 45 }}
+                  animate={{ y: 0, opacity: 1, rotate: 0 }}
+                  exit={{ y: -20, opacity: 0, rotate: -45 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Moon className="w-5 h-5 text-blue-400" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="sun"
+                  initial={{ y: 20, opacity: 0, rotate: 45 }}
+                  animate={{ y: 0, opacity: 1, rotate: 0 }}
+                  exit={{ y: -20, opacity: 0, rotate: -45 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Sun className="w-5 h-5 text-amber-400" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </button>
+
+          <button
+            onClick={() => setIsHistoryOpen(true)}
+            className="p-3.5 rounded-2xl bg-secondary hover:bg-secondary/80 border border-border text-muted-foreground transition-all hover:scale-110 shadow-2xl backdrop-blur-xl group"
+          >
+            <RotateCcw className="w-5 h-5 group-hover:rotate-[-45deg] transition-transform duration-300" />
+          </button>
+        </div>
       </div>
 
       {/* Top Section: Hero + Input */}
@@ -157,7 +185,6 @@ export default function Dashboard() {
             onSend={handleSend}
             loading={loading}
             lastCommand={lastCommand}
-            onWebTaskComplete={handleWebTaskComplete}
           />
 
           {/* Stop/Edit Controls - Show when loading or after cancel */}
@@ -206,12 +233,11 @@ export default function Dashboard() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      </div>
+        </div >
+      </div >
 
-      {/* Main Content Area: Full Width */}
-      <div className="flex-1 w-full max-w-[95%] mx-auto flex border-t border-white/5 min-h-0">
-        {/* Results Area (Full Width) */}
+      {/* Main Content Area */}
+      <div className="flex-1 w-full max-w-7xl mx-auto flex min-h-0 z-10">
         <div className="w-full relative overflow-y-auto custom-scrollbar">
           {isBrowserMode ? (
             <BrowserViewport url={browserUrl} isModalOpen={false} />
@@ -223,53 +249,55 @@ export default function Dashboard() {
 
       {/* History Sidebar Drawer */}
       <AnimatePresence>
-        {isHistoryOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsHistoryOpen(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
-            />
-            {/* Drawer */}
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-80 bg-[#0A0A12] border-l border-white/10 z-[101] shadow-2xl"
-            >
-              <div className="h-full flex flex-col">
-                {/* Drawer Header */}
-                <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">History</h2>
-                  <button
-                    onClick={() => setIsHistoryOpen(false)}
-                    className="p-1 hover:bg-white/10 rounded-md transition-colors"
-                  >
-                    <RotateCcw className="w-4 h-4 text-slate-500 rotate-45" /> {/* Using rotate as close icon substitute for now */}
-                  </button>
-                </div>
+        {
+          isHistoryOpen && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsHistoryOpen(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+              />
+              {/* Drawer */}
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="fixed top-0 right-0 bottom-0 w-80 bg-background border-l border-border z-[101] shadow-2xl"
+              >
+                <div className="h-full flex flex-col">
+                  {/* Drawer Header */}
+                  <div className="p-4 border-b border-border flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">History</h2>
+                    <button
+                      onClick={() => setIsHistoryOpen(false)}
+                      className="p-1 hover:bg-secondary rounded-md transition-colors"
+                    >
+                      <RotateCcw className="w-4 h-4 text-muted-foreground rotate-45" /> {/* Using rotate as close icon substitute for now */}
+                    </button>
+                  </div>
 
-                {/* Drawer Content */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  <RecentsHistory
-                    recents={history}
-                    onSelect={(cmd) => {
-                      handleSend(cmd);
-                      setIsHistoryOpen(false);
-                    }}
-                  // TODO: Add onDelete and onFolderMove handlers here in next step
-                  />
+                  {/* Drawer Content */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <RecentsHistory
+                      recents={history}
+                      onSelect={(cmd) => {
+                        handleSend(cmd);
+                        setIsHistoryOpen(false);
+                      }}
+                    // TODO: Add onDelete and onFolderMove handlers here in next step
+                    />
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            </>
+          )
+        }
+      </AnimatePresence >
 
-    </main>
+    </main >
   );
 }

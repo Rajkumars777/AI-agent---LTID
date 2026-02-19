@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Clock, ChevronRight, Trash2, Folder, FolderPlus, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface RecentsHistoryProps {
     recents: string[];
@@ -60,54 +61,64 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
     };
 
     return (
-        <div className="w-full h-full p-4 bg-[#0A0A12]">
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2 text-slate-400">
-                    <Clock className="w-4 h-4" />
-                    <h3 className="text-sm font-semibold uppercase tracking-wider">History</h3>
+        <div className="w-full h-full p-6 bg-transparent">
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3 text-muted-foreground">
+                    <div className="p-2 rounded-xl bg-secondary border border-border">
+                        <Clock className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-foreground/50">History</h3>
                 </div>
                 <button
                     onClick={() => setIsCreatingFolder(true)}
-                    className="p-1 hover:bg-white/10 rounded-md text-slate-500 hover:text-slate-300 transition-colors"
+                    className="p-2 hover:bg-white/10 rounded-xl text-slate-500 hover:text-primary transition-all duration-300"
                     title="New Folder"
                 >
-                    <FolderPlus className="w-4 h-4" />
+                    <FolderPlus className="w-5 h-5" />
                 </button>
             </div>
 
             {/* Folder Creation Input */}
-            {isCreatingFolder && (
-                <div className="mb-4 p-2 bg-white/5 rounded-lg border border-white/10">
-                    <input
-                        type="text"
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                        placeholder="Folder name..."
-                        className="w-full bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-600 mb-2"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-                    />
-                    <div className="flex justify-end gap-2">
-                        <button onClick={() => setIsCreatingFolder(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
-                        <button onClick={handleCreateFolder} className="text-xs text-emerald-400 hover:text-emerald-300">Create</button>
-                    </div>
-                </div>
-            )}
+            <AnimatePresence>
+                {isCreatingFolder && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="mb-6 p-3 glass-pane rounded-2xl border-primary/20"
+                    >
+                        <input
+                            type="text"
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            placeholder="Folder name..."
+                            className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground mb-3"
+                            autoFocus
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setIsCreatingFolder(false)} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                            <button onClick={handleCreateFolder} className="text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80 transition-colors">Create</button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
                 {/* Folders List */}
                 {folders.map(folder => (
                     <div key={folder.id} className="group">
-                        <div className="flex items-center gap-2 text-slate-300 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer">
-                            <Folder className="w-4 h-4 text-amber-500" />
-                            <span className="text-sm font-medium flex-1">{folder.name}</span>
-                            <span className="text-xs text-slate-600">{folder.items.length}</span>
+                        <div className="flex items-center gap-3 text-foreground p-3 rounded-2xl hover:bg-secondary border border-transparent hover:border-border transition-all duration-300 cursor-pointer">
+                            <div className="p-2 bg-amber-500/10 rounded-xl">
+                                <Folder className="w-4 h-4 text-amber-500" />
+                            </div>
+                            <span className="text-sm font-bold flex-1 tracking-tight">{folder.name}</span>
+                            <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">{folder.items.length}</span>
                         </div>
-                        {/* Expanded folder items could go here if we implemented toggle logic */}
                         {folder.items.length > 0 && (
-                            <div className="pl-4 mt-1 space-y-1 border-l border-white/5 ml-2">
+                            <div className="pl-6 mt-2 space-y-2 border-l-2 border-white/5 ml-5">
                                 {folder.items.map((item, idx) => (
-                                    <div key={idx} onClick={() => onSelect(item)} className="text-xs text-slate-400 py-1 px-2 hover:bg-white/5 rounded cursor-pointer truncate">
+                                    <div key={idx} onClick={() => onSelect(item)} className="text-xs text-muted-foreground py-2 px-3 hover:bg-secondary rounded-xl cursor-pointer truncate transition-colors border border-transparent hover:border-border font-light">
                                         {item}
                                     </div>
                                 ))}
@@ -117,43 +128,43 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
                 ))}
 
                 {/* Loose Items */}
-                <div className="space-y-1">
-                    {visibleRecents.length > 0 && <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2 mt-4 ml-1">Recent Items</div>}
+                <div className="space-y-2">
+                    {visibleRecents.length > 0 && (
+                        <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-4 mt-8 ml-1">Recent Commands</div>
+                    )}
 
                     {visibleRecents.map((cmd, i) => (
                         <div
                             key={i}
-                            className="group relative flex items-center p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5"
+                            className="group relative flex items-center p-3 rounded-2xl hover:bg-secondary transition-all duration-300 cursor-pointer border border-transparent hover:border-border"
                             onClick={() => onSelect(cmd)}
                         >
-                            <span className="text-sm text-slate-300 truncate font-light flex-1 pr-8">
+                            <span className="text-sm text-foreground truncate font-light flex-1 pr-8 tracking-wide">
                                 {cmd}
                             </span>
 
                             {/* Actions Group */}
-                            <div className="absolute right-2 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity bg-[#0A0A12] pl-2 shadow-xl">
-                                {/* Delete Button */}
+                            <div className="absolute right-3 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-300 translate-x-1 group-hover:translate-x-0">
                                 <button
                                     onClick={(e) => handleDelete(cmd, e)}
-                                    className="p-1.5 hover:bg-red-500/20 rounded text-slate-500 hover:text-red-400 transition-colors"
+                                    className="p-2 hover:bg-red-500 bg-[#0A0A12]/80 backdrop-blur-md rounded-xl text-slate-500 hover:text-white transition-all shadow-xl"
                                     title="Delete"
                                 >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* Move to Folder (Simple Dropdown equivalent) */}
                                 {folders.length > 0 && (
                                     <div className="relative group/folder">
-                                        <button className="p-1.5 hover:bg-blue-500/20 rounded text-slate-500 hover:text-blue-400 transition-colors">
-                                            <Folder className="w-3 h-3" />
+                                        <button className="p-2 hover:bg-primary bg-[#0A0A12]/80 backdrop-blur-md rounded-xl text-slate-500 hover:text-white transition-all shadow-xl">
+                                            <Folder className="w-3.5 h-3.5" />
                                         </button>
-                                        {/* Hover Menu for Folders */}
-                                        <div className="absolute right-0 top-full mt-1 w-32 bg-slate-800 border border-slate-700 rounded-md shadow-xl overflow-hidden hidden group-hover/folder:block z-50">
+                                        <div className="absolute right-0 bottom-full mb-2 w-40 glass-pane rounded-2xl shadow-2xl overflow-hidden hidden group-hover/folder:block z-50">
+                                            <div className="p-2 bg-white/5 border-b border-white/5 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Move to</div>
                                             {folders.map(f => (
                                                 <div
                                                     key={f.id}
                                                     onClick={(e) => addToFolder(cmd, f.id, e)}
-                                                    className="px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 cursor-pointer truncate"
+                                                    className="px-4 py-2.5 text-xs text-slate-300 hover:bg-primary/20 hover:text-white cursor-pointer truncate transition-colors"
                                                 >
                                                     {f.name}
                                                 </div>
