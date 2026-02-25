@@ -7,7 +7,8 @@ import { TimelineFeed, Step } from "@/components/TimelineFeed";
 import { RecentsHistory } from "@/components/RecentsHistory";
 import BrowserViewport from "@/components/BrowserViewport";
 
-import { chatWithAgent, cancelOperation, generateTaskId } from "@/lib/api";
+import { chatWithAgent, cancelOperation, generateTaskId, resumeTask } from "@/lib/api";
+import { useWebsocket, WebSocketEvent } from "@/hooks/useWebsocket";
 import { motion, AnimatePresence } from "framer-motion";
 import { StopCircle, Edit3, RotateCcw, Globe, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [browserUrl, setBrowserUrl] = useState("https://google.com");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   // Sync theme with document class
   useEffect(() => {
@@ -32,12 +34,60 @@ export default function Dashboard() {
     }
   }, [isDark]);
 
+  // Handle real-time events from WebSocket
+  const handleWebSocketEvent = useCallback((event: WebSocketEvent) => {
+    const { type, data } = event;
+    const timestamp = new Date().toLocaleTimeString();
+
+    setSteps(prev => {
+      // 1. Map thinking/analysis
+      if (type === "Thinking" || type === "NLU_Success") {
+        const content = type === "Thinking" ? data.message : "NLU Analysis complete.";
+        // Avoid duplicate identical thinking blocks
+        if (prev.length > 0 && prev[prev.length - 1].content === content) return prev;
+        return [...prev, { type: "Reasoning", content, timestamp }];
+      }
+
+      // 2. Map Screen Agent actions
+      if (type === "AgentStep" || type === "ActionStarted" || type === "ScreenTaskStarted") {
+        const content = data.desc || data.action || data.task || "Executing action...";
+        return [...prev, { type: "Action", content, timestamp }];
+      }
+
+      // 3. Map Results
+      if (type === "ActionResult" || type === "AgentStepDone" || type === "AgentDone") {
+        const content = data.result || data.message || "Action completed.";
+        // Update the last "Action" step with result if possible, or add new
+        if (prev.length > 0 && prev[prev.length - 1].type === "Action") {
+          const last = prev[prev.length - 1];
+          return [...prev.slice(0, -1), { ...last, content: `${last.content}\n\n${content}` }];
+        }
+        return [...prev, { type: "Decision", content, timestamp }];
+      }
+
+      // 4. Handle Questions (Interactive)
+      if (type === "AgentQuestion" || type === "REQUIRE_HELP") {
+        return [...prev, {
+          type: "Decision",
+          content: data.prompt || data.question,
+          timestamp,
+          attachment: { type: "options", data: [{ label: "Reply to Agent", value: "REPLY_TRIGGER" }] }
+        }];
+      }
+
+      return prev;
+    });
+  }, []);
+
+  useWebsocket(activeTaskId, handleWebSocketEvent);
+
   // Handle cancel operation
   const handleCancel = useCallback(async () => {
     setCancelled(true);
     await cancelOperation();
     setLoading(false);
-    setSteps([{
+    setActiveTaskId(null);
+    setSteps(prev => [...prev, {
       type: "Action",
       content: "⏹️ Operation cancelled by user",
       timestamp: new Date().toLocaleTimeString()
@@ -67,33 +117,56 @@ export default function Dashboard() {
 
     try {
       const taskId = generateTaskId();
+      setActiveTaskId(taskId);
+
       const res = await chatWithAgent(input, taskId);
 
       if (res.cancelled) {
-        setSteps([{
-          type: "Action",
-          content: "⏹️ Operation cancelled",
-          timestamp: new Date().toLocaleTimeString()
-        }]);
-      } else if (res.steps) {
-        setSteps(res.steps);
-      } else {
-        setSteps([{
-          type: "Action",
-          content: "Task executed successfully. (Backend returned no detailed steps)",
-          timestamp: new Date().toLocaleTimeString()
-        }]);
+        // Handled by handleCancel usually, but for completeness:
+        if (!cancelled) {
+          setSteps(prev => [...prev, {
+            type: "Action",
+            content: "⏹️ Operation cancelled",
+            timestamp: new Date().toLocaleTimeString()
+          }]);
+        }
+      } else if (res.steps && res.steps.length > 0) {
+        // If WebSocket didn't populate steps (e.g. fast task), use the response
+        setSteps(prev => prev.length === 0 ? res.steps : prev);
       }
     } catch (e) {
       if (!cancelled) {
-        setSteps([{
+        setSteps(prev => [...prev, {
           type: "Action",
           content: "System Error: " + e,
           timestamp: new Date().toLocaleTimeString()
         }]);
       }
+    } finally {
+      setLoading(false);
+      // We keep activeTaskId for a moment to catch final events, but can clear it
+      setTimeout(() => setActiveTaskId(null), 2000);
     }
-    setLoading(false);
+  };
+
+  // Handle clicking options in the timeline (like "Reply to Agent")
+  const handleOptionSelect = async (value: string) => {
+    if (value === "REPLY_TRIGGER") {
+      const reply = window.prompt("Nexus requires additional information to continue:");
+      if (reply && activeTaskId) {
+        setLoading(true);
+        try {
+          await resumeTask(activeTaskId, reply);
+          // The agent will resume and emit events via WebSocket
+        } catch (e) {
+          console.error("Resume failed", e);
+        } finally {
+          setLoading(false);
+        }
+      }
+    } else {
+      handleSend(value);
+    }
   };
 
   const toggleBrowserMode = async () => {
@@ -242,11 +315,10 @@ export default function Dashboard() {
           {isBrowserMode ? (
             <BrowserViewport url={browserUrl} isModalOpen={false} />
           ) : (
-            <TimelineFeed steps={steps} onOptionSelect={handleSend} />
+            <TimelineFeed steps={steps} onOptionSelect={handleOptionSelect} />
           )}
         </div>
       </div>
-
       {/* History Sidebar Drawer */}
       <AnimatePresence>
         {

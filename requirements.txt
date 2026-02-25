@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────
+# Desktop Automation
+# ─────────────────────────────────────────────────────
+pyautogui==0.9.54
+pygetwindow==0.0.9
+pywinauto==0.6.8
+AppOpener==1.7
+psutil==5.9.6
+pyperclip==1.8.2
+
+# ─────────────────────────────────────────────────────
+# Browser Automation
+# ─────────────────────────────────────────────────────
+playwright==1.40.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# ─────────────────────────────────────────────────────
+# Document Processing
+# ─────────────────────────────────────────────────────
+openpyxl==3.1.2
+xlwings==0.30.13           # Optional: requires Excel installation
+python-docx==1.1.0
+PyMuPDF==1.25.3            # Updated for better compat
+python-pptx==0.6.23
+
+# ─────────────────────────────────────────────────────
+# Vision & OCR
+# ─────────────────────────────────────────────────────
+pytesseract==0.3.10
+easyocr==1.7.0
+opencv-python-headless==4.10.0.84  # Updated
+Pillow==10.1.0
+
+# ─────────────────────────────────────────────────────
+# LLM & Core
+# ─────────────────────────────────────────────────────
+groq>=0.9.0                # Updated for compat
+openai>=2.21.0             # Updated for litellm/dspy compat
+anthropic>=0.8.1
+pydantic>=2.9.0            
+pydantic-settings>=2.4.0   
+
+# ─────────────────────────────────────────────────────
+# Web Framework
+# ─────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart==0.0.6
+
+# ─────────────────────────────────────────────────────
+# Utilities
+# ─────────────────────────────────────────────────────
+python-dotenv==1.0.0
+requests>=2.32.3           
+aiohttp>=3.10.5            
+httpx>=0.27.2              # Added for stability
+
+# ─────────────────────────────────────────────────────
+# Optional: Voice Input
+# ─────────────────────────────────────────────────────
+# faster-whisper==0.10.0   # Uncomment for voice input

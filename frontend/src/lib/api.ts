@@ -99,6 +99,16 @@ export async function listFiles(directory: string = ".") {
     return res.json();
 }
 
+export async function resumeTask(taskId: string, data: any) {
+    const base = await getApiBase();
+    const res = await fetch(`${base}/agent/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId, data }),
+    });
+    return res.json();
+}
+
 export async function browseUrl(url: string) {
     const base = await getApiBase();
     const res = await fetch(`${base}/tools/browser/browse`, {
@@ -107,19 +117,4 @@ export async function browseUrl(url: string) {
         body: JSON.stringify({ url }),
     });
     return res.json();
-}
-
-export async function orchestrateWebTask(url: string, action: string, selector?: string) {
-    const base = await getApiBase();
-    try {
-        const res = await fetch(`${base}/api/web-orchestrator`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, action, selector }),
-        });
-        if (!res.ok) throw new Error(`API Error: ${res.status}`);
-        return res.json();
-    } catch (e: any) {
-        return { status: "Failed", error: e.toString() };
-    }
 }

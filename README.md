@@ -15,7 +15,6 @@ A powerful AI-powered desktop automation and RPA (Robotic Process Automation) ag
 - 📄 **Document Processing** - Extract text from PDF/Word, convert formats
 - 🌐 **AI Web Automation** - Agent can browse, search, and extract data from the web using Playwright
 
-
 ---
 
 ## 🚀 Quick Start
@@ -256,12 +255,6 @@ npm install
 
 - Allow microphone permissions in browser
 - Restart backend (first time downloads Whisper model)
-
----
-
-## 📄 License
-
-MIT License - feel free to use and modify!
 
 ---
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Activity, Play, CheckCircle2, Clock, Edit2, Save, X, FileText, FileSpreadsheet, File } from "lucide-react";
+import { Bot, Activity, Play, CheckCircle2, Clock, Edit2, Save, X, FileText, FileSpreadsheet, File, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -213,13 +213,10 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
 
     const handleEdit = () => {
         if (!isEditing) {
-            // Enter edit mode: Convert data to string for textarea
             const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
             setEditedContent(text);
         } else {
-            // Save edits (locally to state)
             try {
-                // Try to parse back to JSON if it looks like JSON
                 if (editedContent.trim().startsWith("{") || editedContent.trim().startsWith("[")) {
                     const parsed = JSON.parse(editedContent);
                     setData(parsed);
@@ -227,17 +224,16 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
                     setData(editedContent);
                 }
             } catch (e) {
-                // If parse fails, just save as string
                 setData(editedContent);
             }
         }
         setIsEditing(!isEditing);
     };
 
-    const handleSaveAs = async (format: string) => {
-        setSaveStatus("Saving capability removed");
-        setTimeout(() => setSaveStatus(null), 3000);
-    };
+    // If the data looks like a product object, render the rich product card
+    if (data && typeof data === 'object' && (data.title || data.price || data.rating)) {
+        return <WebProductCard product={data} url={url} />;
+    }
 
     const isTable = Array.isArray(data) && data.length > 0 && typeof data[0] === 'object';
 
@@ -266,7 +262,6 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
                 </div>
             </div>
 
-            {/* Editing Mode */}
             {isEditing ? (
                 <div className="p-0">
                     <textarea
@@ -276,9 +271,7 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
                     />
                 </div>
             ) : (
-                /* Data Preview */
                 <div className="p-0">
-                    {/* Screenshot Banner */}
                     {screenshot && (
                         <div className="relative group/shot border-b border-white/5 bg-black/50">
                             <div className="h-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-50" />
@@ -289,7 +282,6 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
                     )}
 
                     <div className="p-4 overflow-x-auto">
-                        {/* SPECIAL CASE: Title + Content List (Common Web Scrape Format) */}
                         {data && typeof data === 'object' && data.title && Array.isArray(data.content) ? (
                             <div className="space-y-3">
                                 <h3 className="text-sm font-bold text-slate-100 border-b border-white/10 pb-2">
@@ -343,3 +335,138 @@ function WebResultViewer({ initialData, url, screenshot }: { initialData: any, u
         </div>
     );
 }
+
+// ─── Rich Product Card ──────────────────────────────────────────────────────
+function WebProductCard({ product, url }: { product: any; url?: string }) {
+    const [imgError, setImgError] = React.useState(false);
+
+    const stars = parseFloat(product.rating) || 0;
+    const fullStars = Math.floor(stars);
+    const hasHalf = stars - fullStars >= 0.4;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, type: "spring" }}
+            className="mt-4 rounded-2xl overflow-hidden border border-white/10 bg-gradient-to-br from-[#0d0d18] to-[#101020] shadow-2xl"
+        >
+            {/* ── Top Banner ── */}
+            <div className="flex items-center justify-between px-5 py-3 bg-emerald-500/10 border-b border-emerald-500/20">
+                <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
+                        ✅ Task Completed Successfully
+                    </span>
+                </div>
+                {product.badge && (
+                    <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full uppercase tracking-widest">
+                        🏆 {product.badge}
+                    </span>
+                )}
+            </div>
+
+            {/* ── Steps Summary ── */}
+            <div className="px-5 py-3 border-b border-white/5 space-y-1">
+                {["Opened browser and navigated to site", "Searched for product", "Clicked on first search result", "Scraped product details"].map((step, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="text-emerald-500 font-bold">✓</span>
+                        <span>{step}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* ── Product Main Area ── */}
+            <div className="flex flex-col md:flex-row gap-0">
+                {/* Product Image */}
+                {product.image && !imgError && (
+                    <div className="md:w-52 flex-shrink-0 bg-white/5 flex items-center justify-center p-4 border-r border-white/5">
+                        <img
+                            src={product.image}
+                            alt={product.title}
+                            onError={() => setImgError(true)}
+                            className="w-full max-w-[180px] object-contain rounded-xl"
+                        />
+                    </div>
+                )}
+
+                {/* Product Info */}
+                <div className="flex-1 p-5 space-y-4">
+                    {/* Title */}
+                    <h3 className="text-sm font-bold text-white leading-snug line-clamp-3">
+                        {product.title}
+                    </h3>
+
+                    {/* Price + Rating Row */}
+                    <div className="flex flex-wrap items-center gap-4">
+                        {product.price && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Price</span>
+                                <span className="text-2xl font-black text-emerald-400 tracking-tight">
+                                    {product.price}
+                                </span>
+                            </div>
+                        )}
+                        {product.rating && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Rating</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <div className="flex gap-0.5">
+                                        {[1, 2, 3, 4, 5].map(i => (
+                                            <span key={i} className={cn(
+                                                "text-base",
+                                                i <= fullStars ? "text-amber-400" :
+                                                    (i === fullStars + 1 && hasHalf) ? "text-amber-400/60" :
+                                                        "text-slate-600"
+                                            )}>★</span>
+                                        ))}
+                                    </div>
+                                    <span className="text-sm font-bold text-amber-400">{product.rating}</span>
+                                    {product.reviews && (
+                                        <span className="text-xs text-slate-500">({product.reviews})</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Specs */}
+                    {product.specs && product.specs.length > 0 && (
+                        <div>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Key Features</span>
+                            <ul className="mt-2 space-y-1.5">
+                                {product.specs.map((spec: string, idx: number) => (
+                                    <li key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                                        <span className="text-emerald-500 mt-px flex-shrink-0">›</span>
+                                        <span>{spec}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Footer ── */}
+            {(url || product.url) && (
+                <div className="px-5 py-3 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Globe className="w-3 h-3 text-slate-500" />
+                        <span className="text-[10px] text-slate-500 font-mono truncate max-w-[400px]">
+                            {url || product.url}
+                        </span>
+                    </div>
+                    <a
+                        href={url || product.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-bold text-primary hover:text-white uppercase tracking-widest transition-colors flex items-center gap-1"
+                    >
+                        View Product →
+                    </a>
+                </div>
+            )}
+        </motion.div>
+    );
+}
+

@@ -1,0 +1,242 @@
+{
+  "extract_text_from_pdf": {
+    "name": "extract_text_from_pdf",
+    "description": "Extracts text or specific patterns (invoice numbers, dates, amounts) from PDF. Use when user says: extract from PDF, get invoice number, find text in PDF, read PDF.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pdf_path": {
+          "type": "string",
+          "description": "Path to PDF file"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Optional regex pattern to extract specific text"
+        }
+      },
+      "required": [
+        "pdf_path"
+      ]
+    },
+    "_is_core": false
+  },
+  "extract_text_from_word": {
+    "name": "extract_text_from_word",
+    "description": "Extracts text or specific patterns from Word document. Use when user says: extract from Word, get text from doc, read Word file.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "doc_path": {
+          "type": "string",
+          "description": "Path to Word document"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Optional regex pattern"
+        }
+      },
+      "required": [
+        "doc_path"
+      ]
+    },
+    "_is_core": false
+  },
+  "fill_word_template": {
+    "name": "fill_word_template",
+    "description": "Fills a Word template by replacing {{placeholders}} with actual data. Use when user says: fill template, populate document, insert data into Word.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "template_path": {
+          "type": "string",
+          "description": "Path to Word template"
+        },
+        "data": {
+          "type": "object",
+          "description": "Dictionary of placeholder: value pairs"
+        },
+        "output_path": {
+          "type": "string",
+          "description": "Output file path"
+        }
+      },
+      "required": [
+        "template_path",
+        "data"
+      ]
+    },
+    "_is_core": false
+  },
+  "format_word_text": {
+    "name": "format_word_text",
+    "description": "Changes font, size, color, or style in Word document. Use when user says: change font, make bold, color text, format Word.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "doc_path": {
+          "type": "string",
+          "description": "Path to Word document"
+        },
+        "target_text": {
+          "type": "string",
+          "description": "Text to format or 'all'"
+        },
+        "font_name": {
+          "type": "string",
+          "description": "Font name (e.g. Arial, Calibri)"
+        },
+        "font_size": {
+          "type": "integer",
+          "description": "Font size in points"
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "color": {
+          "type": "string",
+          "description": "Color name (red, blue, green, etc)"
+        }
+      },
+      "required": [
+        "doc_path"
+      ]
+    },
+    "_is_core": false
+  },
+  "input_data_to_excel": {
+    "name": "input_data_to_excel",
+    "description": "Inputs data into Excel cells and triggers formula recalculation. Use when user says: put data in Excel, write to cells, update Excel, fill cells.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "excel_path": {
+          "type": "string",
+          "description": "Path to Excel file"
+        },
+        "data": {
+          "type": "object",
+          "description": "Dictionary of cell: value (e.g. {'A1': 'Hello', 'B2': 123})"
+        },
+        "sheet_name": {
+          "type": "string",
+          "description": "Sheet name (optional)"
+        }
+      },
+      "required": [
+        "excel_path",
+        "data"
+      ]
+    },
+    "_is_core": false
+  },
+  "refresh_pivot_table": {
+    "name": "refresh_pivot_table",
+    "description": "Refreshes pivot tables in Excel. Use when user says: refresh pivot, update pivot table, recalculate pivot.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "excel_path": {
+          "type": "string",
+          "description": "Path to Excel file with pivot tables"
+        }
+      },
+      "required": [
+        "excel_path"
+      ]
+    },
+    "_is_core": false
+  },
+  "pdf_to_excel": {
+    "name": "pdf_to_excel",
+    "description": "Extracts data from PDF and inputs it into Excel. Use when user says: PDF to Excel, extract invoice to Excel, get data from PDF to spreadsheet.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pdf_path": {
+          "type": "string",
+          "description": "Source PDF file"
+        },
+        "excel_path": {
+          "type": "string",
+          "description": "Target Excel file"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern to extract data"
+        },
+        "target_cell": {
+          "type": "string",
+          "description": "Starting cell (default: A1)"
+        },
+        "sheet_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pdf_path",
+        "excel_path",
+        "pattern"
+      ]
+    },
+    "_is_core": false
+  },
+  "web_to_excel": {
+    "name": "web_to_excel",
+    "description": "Extracts data from webpage and inputs it into Excel. Use when user says: web to Excel, scrape website to spreadsheet, get data from URL to Excel.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Webpage URL"
+        },
+        "excel_path": {
+          "type": "string",
+          "description": "Target Excel file"
+        },
+        "css_selector": {
+          "type": "string",
+          "description": "CSS selector for data"
+        },
+        "target_cell": {
+          "type": "string",
+          "description": "Starting cell"
+        }
+      },
+      "required": [
+        "url",
+        "excel_path"
+      ]
+    },
+    "_is_core": false
+  },
+  "convert_file_format": {
+    "name": "convert_file_format",
+    "description": "Converts files between formats (Excel to PDF, CSV to XLSX, Word to PDF, etc). Use when user says: convert to PDF, save as Excel, change format, export as.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "source_path": {
+          "type": "string",
+          "description": "Source file path"
+        },
+        "target_format": {
+          "type": "string",
+          "description": "Target format: pdf, xlsx, csv, docx"
+        },
+        "output_path": {
+          "type": "string",
+          "description": "Output file path (optional)"
+        }
+      },
+      "required": [
+        "source_path",
+        "target_format"
+      ]
+    },
+    "_is_core": false
+  }
+}
