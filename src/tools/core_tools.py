@@ -624,7 +624,7 @@ def initialize_core_tools():
         executor = tool["executor"]
         registry.register(meta, executor, is_core=True)
         registered += 1
-    print(f"[CoreTools] ✅ {registered} core tools initialized (precedence ensured)")
+    print(f"[CoreTools] [OK] {registered} core tools initialized (precedence ensured)")
 
 
 # Auto-initialize when imported as part of the package

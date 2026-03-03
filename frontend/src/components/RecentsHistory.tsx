@@ -20,6 +20,8 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
     const [newFolderName, setNewFolderName] = useState("");
     // Local state to manage deleted items visually until parent updates
     const [deletedItems, setDeletedItems] = useState<string[]>([]);
+    // State for delete confirmation modal
+    const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
     const visibleRecents = recents.filter(r => !deletedItems.includes(r));
 
@@ -32,9 +34,20 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
         );
     }
 
-    const handleDelete = (item: string, e: React.MouseEvent) => {
+    const handleDeleteClick = (item: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        setDeletedItems(prev => [...prev, item]);
+        setItemToDelete(item);
+    };
+
+    const confirmDelete = () => {
+        if (itemToDelete) {
+            setDeletedItems(prev => [...prev, itemToDelete]);
+            setItemToDelete(null);
+        }
+    };
+
+    const cancelDelete = () => {
+        setItemToDelete(null);
     };
 
     const handleCreateFolder = () => {
@@ -62,6 +75,64 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
 
     return (
         <div className="w-full h-full p-6 bg-transparent">
+            {/* Delete Confirmation Modal */}
+            <AnimatePresence>
+                {itemToDelete && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110]"
+                            onClick={cancelDelete}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[120] w-[90%] max-w-sm"
+                        >
+                            <div className="relative overflow-hidden rounded-3xl bg-background/95 border border-white/10 shadow-2xl backdrop-blur-xl p-6">
+                                {/* Decorative background elements */}
+                                <div className="absolute -top-24 -right-24 w-48 h-48 bg-red-500/20 rounded-full blur-[80px]" />
+                                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-primary/20 rounded-full blur-[80px]" />
+
+                                <div className="relative z-10 flex flex-col items-center text-center">
+                                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4 border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                                        <Trash2 className="w-8 h-8 text-red-500" />
+                                    </div>
+
+                                    <h3 className="text-xl font-black tracking-tight text-foreground mb-2">Delete Item</h3>
+                                    <p className="text-sm text-muted-foreground mb-6 max-w-[250px]">
+                                        Are you sure you want to delete this item? This action cannot be undone.
+                                    </p>
+
+                                    <div className="w-full p-4 bg-secondary/50 rounded-2xl border border-white/5 mb-8">
+                                        <p className="text-sm text-foreground/80 break-words font-light line-clamp-3">
+                                            "{itemToDelete}"
+                                        </p>
+                                    </div>
+
+                                    <div className="flex w-full gap-3">
+                                        <button
+                                            onClick={cancelDelete}
+                                            className="flex-1 py-3 px-4 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmDelete}
+                                            className="flex-1 py-3 px-4 rounded-xl text-sm font-bold bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 hover:border-red-500/30 transition-all shadow-[0_0_20px_rgba(239,68,68,0.1)] hover:shadow-[0_0_30px_rgba(239,68,68,0.2)]"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3 text-muted-foreground">
                     <div className="p-2 rounded-xl bg-secondary border border-border">
@@ -146,8 +217,8 @@ export function RecentsHistory({ recents, onSelect }: RecentsHistoryProps) {
                             {/* Actions Group */}
                             <div className="absolute right-3 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-300 translate-x-1 group-hover:translate-x-0">
                                 <button
-                                    onClick={(e) => handleDelete(cmd, e)}
-                                    className="p-2 hover:bg-red-500 bg-[#0A0A12]/80 backdrop-blur-md rounded-xl text-slate-500 hover:text-white transition-all shadow-xl"
+                                    onClick={(e) => handleDeleteClick(cmd, e)}
+                                    className="p-2 hover:bg-red-500/20 bg-[#0A0A12]/80 backdrop-blur-md rounded-xl text-slate-500 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all shadow-xl"
                                     title="Delete"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />

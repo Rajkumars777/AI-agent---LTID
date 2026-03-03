@@ -311,8 +311,8 @@ class ToolGenerator:
     """
 
     def __init__(self):
-        self._provider = "groq"
-        self._model = "llama-3.3-70b-versatile"
+        self._provider = "gemini"
+        self._model = "gemini-2.5-flash"
         self._client = None
         self.registry = None   # injected from main.py
 
@@ -322,10 +322,14 @@ class ToolGenerator:
     def client(self):
         if self._client:
             return self._client
-        if self._provider == "groq":
-            api_key = os.getenv("GROQ_API_KEY")
+        if self._provider == "gemini":
+            from openai import OpenAI
+            api_key = os.getenv("GEMINI_API_KEY")
             if api_key:
-                self._client = Groq(api_key=api_key)
+                self._client = OpenAI(
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                    api_key=api_key,
+                )
                 return self._client
         if self._provider == "openrouter":
             from openai import OpenAI
@@ -336,7 +340,12 @@ class ToolGenerator:
                     api_key=api_key,
                 )
                 return self._client
-        raise ValueError("No LLM API key found. Set GROQ_API_KEY or OPENROUTER_API_KEY.")
+        if self._provider == "groq":
+            api_key = os.getenv("GROQ_API_KEY")
+            if api_key:
+                self._client = Groq(api_key=api_key)
+                return self._client
+        raise ValueError("No LLM API key found. Set GEMINI_API_KEY, OPENROUTER_API_KEY or GROQ_API_KEY.")
 
     # ─── Safety ──────────────────────────────────────
 
@@ -358,18 +367,22 @@ class ToolGenerator:
         delay: float          = 1.5
     ) -> str | None:
         """
-        Calls LLM (Groq or OpenRouter) with automatic retry and provider-switching.
+        Calls LLM (Gemini, OpenRouter, or Groq) with automatic retry and provider-switching.
         Handles rate limits by falling back to secondary provider.
         """
         for attempt in range(1, retries + 1):
             try:
-                model = self._model if self._provider == "openrouter" else "llama-3.3-70b-versatile"
+                if self._provider == "gemini":
+                    model = "gemini-2.5-flash"
+                elif self._provider == "openrouter":
+                    model = "google/gemini-2.0-flash-001"
+                else:
+                    model = "llama-3.3-70b-versatile"
 
                 response = self.client.chat.completions.create(
                     model       = model,
                     messages    = [{"role": "user", "content": prompt}],
                     temperature = temperature,
-                    max_tokens  = 2048,
                 )
                 return response.choices[0].message.content
 
@@ -377,17 +390,23 @@ class ToolGenerator:
                 err_msg = str(e).lower()
                 print(f"[Generator] LLM attempt {attempt}/{retries} ({self._provider}) failed: {e}")
 
-                # Switch provider if rate limited (429)
-                if "rate_limit_exceeded" in err_msg or "429" in err_msg:
-                    if self._provider == "groq" and os.getenv("OPENROUTER_API_KEY"):
-                        print("[Generator] 🚨 Groq Rate Limit! Switching to OpenRouter...")
+                # Switch provider if rate limited, out of credits (402), or general error on primary
+                if "rate_limit" in err_msg or "429" in err_msg or "402" in err_msg or "error" in err_msg:
+                    if self._provider == "gemini" and os.getenv("OPENROUTER_API_KEY"):
+                        print("[Generator] 🚨 Gemini Issue! Switching to OpenRouter...")
                         self._provider = "openrouter"
                         self._model = "google/gemini-2.0-flash-001"
-                        self._client = None  # Force re-init
+                        self._client = None
                     elif self._provider == "openrouter" and os.getenv("GROQ_API_KEY"):
                         print("[Generator] 🚨 OpenRouter Issue! Switching to Groq...")
                         self._provider = "groq"
-                        self._client = None
+                        self._model = "llama-3.3-70b-versatile"
+                        self._client = None  # Force re-init
+                    elif self._provider == "gemini" and os.getenv("GROQ_API_KEY"):
+                         print("[Generator] 🚨 Gemini Issue (No OpenRouter)! Switching to Groq...")
+                         self._provider = "groq"
+                         self._model = "llama-3.3-70b-versatile"
+                         self._client = None
 
                 if attempt < retries:
                     await asyncio.sleep(delay * attempt)
@@ -420,7 +439,12 @@ class ToolGenerator:
             return any_match.group(1).strip()
 
         # 4. Raw text fallback
-        return text.strip()
+        cleaned = text.strip()
+        
+        # 5. Unescape literal newlines if LLM returned a string representation
+        cleaned = cleaned.replace('\\n', '\n')
+            
+        return cleaned
 
     # ─── Generation Pipeline ─────────────────────────
 
@@ -882,10 +906,11 @@ class DynamicS1Automation:
                 if PYWINAUTO_AVAILABLE:
                     try:
                         title_re = f".*{re.escape(title)}.*"
-                        conn = Application(backend="uia").connect(
+                        # Use top_window() to avoid AmbiguousControlError when multiple match
+                        app = Application(backend="uia").connect(
                             title_re=title_re, timeout=int(timeout)
                         )
-                        win = conn.window(title_re=title_re)
+                        win = app.top_window()
                         win.wait("active ready", timeout=int(timeout))
                         _logger.info(f"[S1] ✅ '{title}' is ready")
                         return True

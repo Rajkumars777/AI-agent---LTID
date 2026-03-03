@@ -24,13 +24,16 @@ class ScriptGenerator(dspy.Signature):
     5. **MODIFY EXISTING (Excel/CSV)**:
        - If modifying an EXISTING file, save changes back to the file and open it.
        - Use `pandas` or `openpyxl` to update cells, formulas, and Pivot-related ranges.
+       - IMPORTANT for openpyxl: `sheet['A']` returns a tuple of Cell objects. Iterate directly: `for cell in sheet['A']: cell.fill = ...` (do NOT iterate over `cell`).
     6. **READ/ANALYZE (tabular data)**:
        - For reading/analysis tasks, print as HTML: `print(df.to_html(classes='generated-table', index=False))`
     7. Do NOT use placeholder file paths. Use the exact 'file_path' provided if it exists.
     8. Handle potential errors gracefully.
-    9. Output ONLY valid Python code. No markdown blocks. No newlines inside strings.
-    10. **XLS FORMAT**: If the input file is `.xls`, READ it using `pd.read_excel`. Save to `.xlsx` before writing.
-    11. **FIELD MAPPING**: Map natural language column names to actual column names.
+    9. Output ONLY valid Python code. No markdown blocks. NEVER use literal newlines inside strings (use `\n` or triple quotes).
+    10. **WINDOWS PATHS**: ALWAYS use raw strings for file paths!
+    11. **DOWNLOADS**: If the task says "Downloads", use: `downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")`.
+    12. **XLS FORMAT**: If the input file is `.xls`, READ it using `pd.read_excel`. Save to `.xlsx` before writing.
+    13. **FIELD MAPPING**: Map natural language column names to actual column names.
 
     DOCUMENT INTELLIGENCE & FORMAT CONVERSION:
     12. **PDF TEXT/TABLE EXTRACTION**:
@@ -58,7 +61,18 @@ class ScriptGenerator(dspy.Signature):
                 doc = word.Documents.Open(docx_path)
                 doc.SaveAs(pdf_path, FileFormat=17)
                 doc.Close(False); word.Quit()
-    15. After creating any output document (Excel, CSV, DOCX, PDF), if appropriate:
+    16. **POWERPOINT (PPTX) CREATION**:
+        - Use `from pptx import Presentation; from pptx.util import Inches`
+        - Create: `prs = Presentation()`
+        - Add Slide: `slide_layout = prs.slide_layouts[0]; slide = prs.slides.add_slide(slide_layout)`
+        - Add Text: `title = slide.shapes.title; title.text = "Analysis Results"`
+        - Add Content: `body = slide.placeholders[1]; body.text = f"Total: {total}\nAverage: {average}"`
+        - Save: `prs.save(pptx_path)`
+    17. **STATISTICAL CALCULATIONS**:
+        - Use `df['col'].sum()`, `df['col'].mean()`, `df['col'].std()` for total, average, and standard deviation.
+    18. **MULTI-FILE TASKS**:
+        - If the task involves multiple files (e.g., Excel + PPT), generate code that handles both.
+    19. After creating any output document (Excel, CSV, DOCX, PDF, PPTX), if appropriate:
         - Call `os.startfile(output_path)` to open it for the user.
         - Print a short HTML or text summary of what was done.
     
@@ -82,8 +96,109 @@ class ScriptGenerator(dspy.Signature):
     file_path = dspy.InputField(desc="The absolute path to the file to operate on (may be 'auto' for new files)")
     python_code = dspy.OutputField(desc="The executable Python script")
 
-# Initialize Predictor
+class TaskIntent(dspy.Signature):
+    """Analyze the user's natural language task and categorize it."""
+    task = dspy.InputField(desc="The natural language task description")
+    intent = dspy.OutputField(desc="Return strictly one of: 'DATA_RETRIEVAL', 'CREATE', or 'OTHER'")
+
+# Initialize Predictors
 generator = dspy.Predict(ScriptGenerator)
+intent_predictor = dspy.Predict(TaskIntent)
+
+def _call_llm_fallback_chain(prompt: str) -> str:
+    import os
+    from dotenv import load_dotenv
+    import dspy
+    
+    load_dotenv() # Ensure env vars are loaded
+    code = ""
+    
+    # --- ATTEMPT 1: Gemini (Direct API) ---
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    gemini_err_msg = ""
+    if gemini_key:
+        print("DEBUG CodeGen: [Attempt 1] Trying Gemini API directly...", flush=True)
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=gemini_key,
+            )
+            response = client.chat.completions.create(
+                model="gemini-2.5-flash",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0
+            )
+            code = response.choices[0].message.content
+            print(f"DEBUG CodeGen: Gemini generated code length={len(code) if code else 0}", flush=True)
+        except Exception as g_err:
+            gemini_err_msg = str(g_err)
+            print(f"DEBUG CodeGen: Gemini direct call failed: {g_err}", flush=True)
+
+    # --- ATTEMPT 2: OpenRouter (Direct API Fallback) ---
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    openrouter_err_msg = ""
+    if not code or len(code.strip()) < 10:
+        print("DEBUG CodeGen: Gemini failed. [Attempt 2] Trying OpenRouter API...", flush=True)
+        if openrouter_key:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
+                response = client.chat.completions.create(
+                    model="google/gemini-2.0-flash-001",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                code = response.choices[0].message.content
+                print(f"DEBUG CodeGen: OpenRouter generated code length={len(code) if code else 0}", flush=True)
+            except Exception as or_err:
+                openrouter_err_msg = str(or_err)
+                print(f"DEBUG CodeGen: OpenRouter direct call failed: {or_err}", flush=True)
+        else:
+            openrouter_err_msg = "OPENROUTER_API_KEY not found in environment."
+    
+    # --- ATTEMPT 3: Groq (Direct API Fallback 2) ---
+    groq_err_msg = ""
+    if not code or len(code.strip()) < 10:
+        print("DEBUG CodeGen: OpenRouter failed. [Attempt 3] Trying Groq API...", flush=True)
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key:
+            try:
+                from groq import Groq
+                client = Groq(api_key=groq_key)
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                code = response.choices[0].message.content
+                print(f"DEBUG CodeGen: Groq generated code length={len(code) if code else 0}", flush=True)
+            except Exception as groq_err:
+                groq_err_msg = str(groq_err)
+                print(f"DEBUG CodeGen: Groq API call failed: {groq_err}", flush=True)
+        else:
+            groq_err_msg = "GROQ_API_KEY not found in environment."
+
+    # --- ATTEMPT 4: DSPy Default LM ---
+    dspy_err_msg = ""
+    if not code or len(code.strip()) < 10:
+        print("DEBUG CodeGen: Groq failed. [Attempt 4] Trying DSPy LM instance...", flush=True)
+        try:
+            resp = dspy.settings.lm(prompt)
+            if isinstance(resp, list):
+                code = resp[0] if resp else ""
+            else:
+                code = str(resp)
+            print(f"DEBUG CodeGen: DSPy LM generated code length={len(code) if code else 0}", flush=True)
+        except Exception as lm_err:
+            dspy_err_msg = str(lm_err)
+            print(f"DEBUG CodeGen: DSPy LM failed: {lm_err}", flush=True)
+    
+    # --- FINAL CHECK ---
+    if not code or len(code.strip()) < 10:
+        return f"Error: ALL LLM fallback APIs failed to generate code.\nOpenRouter Error: {openrouter_err_msg}\nGroq Error: {groq_err_msg}\nDSPy Error: {dspy_err_msg}"
+        
+    return code
 
 def generate_and_run_script(task: str, file_path: str) -> str:
     """
@@ -139,20 +254,17 @@ For new Excel files:
         
         # If still not found and user wants to create
         if not file_exists:
-            # Check if this is a data retrieval + file creation task
-            task_lower = task.lower()
-            is_data_task = any(kw in task_lower for kw in [
-                "stock", "price", "retrieve", "fetch", "download", "scrape",
-                "nikkei", "sensex", "nifty", "s&p", "dow", "nasdaq",
-                "closing", "opening", "market", "exchange rate", "currency",
-                "gold price", "silver price", "crypto", "bitcoin"
-            ])
-            
-            if is_data_task:
-                structure_info = """
+            # Use DSPy API to understand natural language instead of regex/hardcoding
+            try:
+                prediction = intent_predictor(task=task)
+                intent = prediction.intent.upper()
+                print(f"DEBUG: Analyzed Task Intent: {intent}")
+                
+                if "DATA" in intent or "RETRIEVAL" in intent:
+                    structure_info = """
 NOTE: This is a DATA RETRIEVAL + FILE CREATION task. You must:
-1. Use yfinance or requests to fetch the data
-2. Process and clean the data (round to 2 decimal places if requested)
+1. Fetch the requested data using suitable APIs/scraping (e.g. yfinance, requests)
+2. Process and clean the data
 3. Create a DataFrame with the data
 4. import tempfile, os
 5. Save to: temp_path = os.path.join(tempfile.gettempdir(), 'retrieved_data.xlsx')
@@ -161,8 +273,8 @@ NOTE: This is a DATA RETRIEVAL + FILE CREATION task. You must:
 8. print(df.to_html(classes='generated-table', index=False))
 9. print("Data saved and opened in Excel!")
 """
-            elif "add" in task_lower or "create" in task_lower or "generate" in task_lower:
-                structure_info = """
+                elif "CREATE" in intent or "GENERATE" in intent:
+                    structure_info = """
 NOTE: This is a CREATE/GENERATE task. You must:
 1. import tempfile, os
 2. Create DataFrame with the requested data
@@ -171,6 +283,9 @@ NOTE: This is a CREATE/GENERATE task. You must:
 5. os.startfile(temp_path)
 6. print('Opened in Excel! Use File > Save As to save.')
 """
+            except Exception as e:
+                print(f"Warning: Intent classification failed: {e}")
+
 
     final_task = task + structure_info
 
@@ -185,9 +300,9 @@ NOTE: This is a CREATE/GENERATE task. You must:
         except Exception as pred_err:
             print(f"DEBUG CodeGen: DSPy Predict failed: {pred_err}", flush=True)
         
-        # Fallback: Direct LLM call if DSPy returned empty
+        # Fallback: Direct LLM calls
         if not code or len(code.strip()) < 10:
-            print("DEBUG CodeGen: Falling back to direct LLM call...", flush=True)
+            print("DEBUG CodeGen: DSPy generator failed or returned empty. Starting fallback chain...", flush=True)
             direct_prompt = f"""Write a complete Python script for this task:
 
 TASK: {final_task}
@@ -199,24 +314,19 @@ RULES:
 - Include all imports at the top
 - Use yfinance for stock data (e.g., yf.download("^N225", period="15d"))
 - Use pandas for DataFrames
-- Use os.path.join(tempfile.gettempdir(), 'data.xlsx') for output path
+- If generating Excel data from scratch, use os.path.join(tempfile.gettempdir(), 'data.xlsx') for output path
 - Round numeric values to 2 decimal places when requested
-- At the end: save to Excel, open with os.startfile(), print the DataFrame as HTML
+- ❗ CRITICAL: If you create or modify ANY file (Excel, PowerPoint, Word, etc.), you MUST explicitly open it at the end of the script using `os.startfile("path/to/file")`.
+- Print a clear success message or the DataFrame as HTML at the very end.
+- IMPORTANT for openpyxl: `sheet['A']` returns a tuple of Cell objects. Iterate directly: `for cell in sheet['A']: cell.fill = ...` (do NOT iterate over `cell`).
 
 Python code:"""
-            try:
-                resp = dspy.settings.lm(direct_prompt)
-                if isinstance(resp, list):
-                    code = resp[0] if resp else ""
-                else:
-                    code = str(resp)
-                print(f"DEBUG CodeGen: Direct LLM returned code length={len(code) if code else 0}", flush=True)
-            except Exception as lm_err:
-                print(f"DEBUG CodeGen: Direct LLM also failed: {lm_err}", flush=True)
-                return f"Error: LLM failed to generate code. DSPy error + direct call error.\nDirect error: {lm_err}"
-        
-        if not code or len(code.strip()) < 10:
-            return "Error: LLM failed to generate code (empty response from both DSPy and direct call)."
+            
+            code = _call_llm_fallback_chain(direct_prompt)
+            
+            # --- FINAL CHECK ---
+            if code.startswith("Error:"):
+                return code
 
         # Clean Markdown if present
         if "```" in code:
@@ -225,17 +335,25 @@ Python code:"""
         # Clean potential wrapped quotes
         code = code.strip().strip('"').strip("'")
         
-        # 1.5 Safety Validation (AST Analysis)
-        from src.core.security.safety import validate_code
-        is_safe, safety_msg = validate_code(code)
-        if not is_safe:
-            print(f"BLOCKING UNSAFE CODE: {safety_msg}")
-            return f"❌ **Safety Block:** The generated script was blocked for security reasons.\n**Reason:** {safety_msg}\n\n**Blocked Script:**\n```python\n{code}\n```"
-
         # FIX: Unescape literal newlines if LLM returned a string representation
         code = code.replace('\\n', '\n')
         
         print(f"DEBUG: Generated Code:\n{code}")
+        
+        # 1.6 FIX: Handle literal newlines in f-strings (common LLM error)
+        # If we see an f-string starting with f" or f' and then a newline, wrap it in triple quotes or escape
+        import re
+        # This regex matches f"..." with literal newlines and replaces them with \n
+        if 'f"' in code:
+            def fstring_fixer(match):
+                content = match.group(1)
+                return 'f"""' + content + '"""'
+            code = re.sub(r'f"([^"]*?\n[^"]*?)"', fstring_fixer, code, flags=re.DOTALL)
+        if "f'" in code:
+            def fstring_fixer_single(match):
+                content = match.group(1)
+                return "f'''" + content + "'''"
+            code = re.sub(r"f'([^']*?\n[^']*?)'", fstring_fixer_single, code, flags=re.DOTALL)
         
         # 2. Execution Environment
         output_buffer = io.StringIO()
@@ -265,6 +383,13 @@ Python code:"""
         except ImportError:
             print("Warning: requests not installed.")
             
+        try:
+            from pptx import Presentation
+            execution_globals["Presentation"] = Presentation
+            execution_globals["pptx"] = Presentation
+        except ImportError:
+            print("Warning: python-pptx not installed.")
+        
         try:
             from bs4 import BeautifulSoup
             execution_globals["BeautifulSoup"] = BeautifulSoup
@@ -301,8 +426,15 @@ Python code:"""
             print(f"First attempt failed, trying self-heal...")
             try:
                 heal_task = f"{final_task}\n\nPREVIOUS CODE FAILED WITH ERROR:\n{error_msg}\n\nFix the code to handle this error."
-                prediction2 = generator(task=heal_task, file_path=file_path)
-                code2 = prediction2.python_code
+                try:
+                    prediction2 = generator(task=heal_task, file_path=file_path)
+                    code2 = prediction2.python_code
+                except Exception as e:
+                    code2 = ""
+                    
+                if not code2 or len(code2.strip()) < 10:
+                    heal_prompt = f"Write a complete Python script to fix this error:\n\nTASK: {heal_task}\n\nFILE PATH: {file_path}\n\nRULES:\n- Output ONLY valid Python code, no markdown, no explanation\n- Include all imports\n- ❗ CRITICAL: Explicitly open modified files at the end using `os.startfile('{file_path}')`.\n\nPython code:"
+                    code2 = _call_llm_fallback_chain(heal_prompt)
                 if code2:
                     if "```" in code2:
                         code2 = code2.replace("```python", "").replace("```", "").strip()

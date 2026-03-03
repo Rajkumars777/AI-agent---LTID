@@ -314,19 +314,23 @@ def _plan_with_llm(query: str) -> Optional[MultiStepPlan]:
     from dotenv import load_dotenv
     load_dotenv()
 
-    # Build the API client (prefer Groq, fallback to OpenRouter)
+    # Build the API client (prefer Gemini, then OpenRouter, fallback to Groq)
     client = None
     model  = None
 
-    groq_key = os.getenv("GROQ_API_KEY")
-    or_key   = os.getenv("OPENROUTER_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    groq_key   = os.getenv("GROQ_API_KEY")
+    or_key     = os.getenv("OPENROUTER_API_KEY")
 
-    if groq_key:
+    if gemini_key:
         try:
-            from groq import Groq
-            client = Groq(api_key=groq_key)
-            model  = "llama-3.3-70b-versatile"
-            print("[Planner] Using Groq API")
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=gemini_key,
+            )
+            model = "gemini-2.5-flash"
+            print("[Planner] Using Gemini API")
         except Exception:
             pass
 
@@ -339,6 +343,15 @@ def _plan_with_llm(query: str) -> Optional[MultiStepPlan]:
             )
             model = "google/gemini-2.0-flash-001"
             print("[Planner] Using OpenRouter API")
+        except Exception:
+            pass
+
+    if not client and groq_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            model  = "llama-3.3-70b-versatile"
+            print("[Planner] Using Groq API")
         except Exception:
             pass
 
@@ -400,16 +413,16 @@ def _plan_with_llm(query: str) -> Optional[MultiStepPlan]:
     except Exception as e:
         print(f"[Planner] LLM planning failed: {e}")
 
-        # If Groq rate-limited, retry with OpenRouter
-        if or_key and "rate_limit" in str(e).lower():
+        # If Gemini/OpenRouter rate-limited or failed, retry with OpenRouter then Groq
+        if or_key and ("rate_limit" in str(e).lower() or "402" in str(e) or "429" in str(e) or "error" in str(e).lower()):
             print("[Planner] Retrying with OpenRouter...")
             try:
                 from openai import OpenAI
-                fallback = OpenAI(
+                fallback_client = OpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=or_key,
                 )
-                response = fallback.chat.completions.create(
+                response = fallback_client.chat.completions.create(
                     model       = "google/gemini-2.0-flash-001",
                     messages    = [
                         {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
@@ -440,6 +453,42 @@ def _plan_with_llm(query: str) -> Optional[MultiStepPlan]:
                     )
             except Exception as e2:
                 print(f"[Planner] OpenRouter fallback also failed: {e2}")
+                if groq_key:
+                    print("[Planner] Retrying with Groq...")
+                    try:
+                        from groq import Groq
+                        fallback_client = Groq(api_key=groq_key)
+                        response = fallback_client.chat.completions.create(
+                            model       = "llama-3.3-70b-versatile",
+                            messages    = [
+                                {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+                                {"role": "user",   "content": query},
+                            ],
+                            temperature = 0.1,
+                            max_tokens  = 1024,
+                        )
+                        raw = response.choices[0].message.content.strip()
+                        raw = re.sub(r'^```(?:json)?\s*\n?', '', raw)
+                        raw = re.sub(r'\n?\s*```$', '', raw)
+                        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+                        if json_match:
+                            raw = json_match.group(0)
+                        data = json.loads(raw)
+                        steps = []
+                        for s in data.get("steps", []):
+                            steps.append(PlanStep(
+                                step_number=s.get("step_number", len(steps) + 1),
+                                action=s.get("action", "ANSWER"),
+                                target=str(s.get("target", "")),
+                                context=s.get("context") or None,
+                                description=s.get("description", ""),
+                            ))
+                        if steps:
+                            return MultiStepPlan(
+                                original_query=query, intent=data.get("intent", "custom"), steps=steps
+                            )
+                    except Exception as e3:
+                        print(f"[Planner] Groq fallback also failed: {e3}")
 
     return None
 

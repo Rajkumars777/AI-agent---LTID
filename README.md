@@ -1,16 +1,15 @@
-# 🤖 NEXUS - Next-Gen AI Agent
+# NEXUS - Next-Gen AI Agent
 
 A powerful AI-powered desktop automation and RPA (Robotic Process Automation) agent that understands natural language commands to control your computer, manage files, manipulate Excel spreadsheets, and more.
 
 ---
 
-## ✨ Features
+## Features
 
 - 🗣️ **Natural Language Commands** - Just type or speak what you want to do
 - 📁 **File Operations** - Open, move, rename, delete files with voice/text commands
 - 📊 **Excel Manipulation** - Read, write, add rows, apply styles to spreadsheets
 - 🖥️ **App Control** - Launch and close any application
-- 🎤 **Voice Dictation** - Click mic, speak, verify, and execute (100% local & free)
 - 🔍 **Smart File Search** - Fast cached search across your system
 - 📄 **Document Processing** - Extract text from PDF/Word, convert formats
 - 🌐 **AI Web Automation** - Agent can browse, search, and extract data from the web using Playwright
@@ -197,20 +196,6 @@ AI-agent---LTID/
 
 ---
 
-## 🎤 Voice Dictation
-
-The app includes **FREE, LOCAL voice dictation** using Faster-Whisper:
-
-1. **Click the mic button** (blue microphone icon)
-2. **Speak your command** (records for up to 5 seconds)
-3. **Text appears** in the input box
-4. **Verify/edit** if needed
-5. **Press Enter** to execute
-
-✅ No API key needed - runs 100% locally!
-
----
-
 ## 💡 Example Commands
 
 | Command                                            | What it does                   |
@@ -250,13 +235,7 @@ npm install
 
 - Make sure `.env` file exists in `src/` folder
 - Check that API key is correctly set (no extra spaces)
-
-### Voice not working
-
-- Allow microphone permissions in browser
-- Restart backend (first time downloads Whisper model)
-
----
+- ---
 
 ## 🤝 Contributing
 

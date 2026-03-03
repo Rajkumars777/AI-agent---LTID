@@ -2,8 +2,13 @@ import sys
 import os
 import asyncio
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
 
 # Configure path (add root to sys.path so 'src' can be imported)
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set event loop policy for Windows
@@ -19,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routers import agent as agent_router
 from src.api.routers import tools as tools_router
 from src.api.routers import events as events_router
+from src.api.routers import voice as voice_router
 
 # Import Tools for Registration
 from src.tools.core_tools import initialize_core_tools
@@ -61,6 +67,7 @@ app.add_middleware(
 app.include_router(agent_router.router)
 app.include_router(tools_router.router)
 app.include_router(events_router.router)
+app.include_router(voice_router.router, prefix="/api/voice", tags=["voice"])
 
 # ── Confirmation Endpoints ──
 

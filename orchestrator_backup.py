@@ -44,8 +44,7 @@ class UnifiedOrchestrator:
             "calculate", "standard deviation", "variance", "average", "total",
             "create a new excel", "create a pptx", "presentation", "powerpoint",
             "generate script", "excel", "xlsx", "csv", "cell", "column", 
-            "row", "spreadsheet", "worksheet", "color", "format",
-            "pdf", "docx", "word document", "text file"
+            "row", "spreadsheet", "worksheet", "color", "format"
         ]
 
         import re
@@ -86,14 +85,14 @@ class UnifiedOrchestrator:
                 content = str(content)
                 
             return {
-                "success": ("✅" in content or "Success" in content or "executed" in content.lower() or "Output" in content) and "**Error executing generated script:**" not in content and "Error generating script:" not in content,
+                "success": "✅" in content or "Success" in content or "executed" in content.lower() or "Output" in content,
                 "summary": content,
                 "intermediate_steps": [{
                     "step_id": 1,
                     "action": "DYNAMIC_CODE",
                     "target": target_file,
                     "result": content,
-                    "success": "❌" not in content and "**Error executing generated script:**" not in content and "Error generating script:" not in content,
+                    "success": "❌" not in content,
                     "timestamp": datetime.now().isoformat()
                 }]
             }

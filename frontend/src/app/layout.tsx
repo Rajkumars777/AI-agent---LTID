@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Outfit, Geist_Mono } from "next/font/google";
+import { Outfit, Geist_Mono, Rajdhani, Exo_2 } from "next/font/google";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -11,6 +11,19 @@ const outfit = Outfit({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const rajdhani = Rajdhani({
+  variable: "--font-rajdhani",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+const exo2 = Exo_2({
+  variable: "--font-exo2",
+  subsets: ["latin"],
+  weight: ["300", "400"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -28,7 +41,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${outfit.variable} ${geistMono.variable} antialiased selection:text-white`}
+        className={`${outfit.variable} ${geistMono.variable} ${rajdhani.variable} ${exo2.variable} antialiased selection:text-white`}
       >
         <TauriProvider>
           {children}

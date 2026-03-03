@@ -77,8 +77,9 @@ def retrieve_data_and_create_excel(task: str, file_path: str = "auto") -> str:
 
 def _detect_ticker(task_lower: str) -> str:
     """Map natural language to a yfinance ticker symbol."""
+    import re
     for name, ticker in TICKER_MAP.items():
-        if name in task_lower:
+        if re.search(r'\b' + re.escape(name) + r'\b', task_lower):
             return ticker
     # Check for explicit ticker like "AAPL" or "^N225"
     ticker_match = re.search(r'\b([A-Z]{1,5}(?:-[A-Z]{3})?)\b', task_lower.upper())

@@ -124,6 +124,7 @@ def apply_openai_free_patches():
 
         # 5. The Smart Router (Central Routing Point)
         def patched_smart_generate(self, messages, temperature=0.0, top_p=0.8, repetition_penalty=1.05, max_new_tokens=512, **kwargs):
+            gemini_key = os.getenv("GEMINI_API_KEY")
             groq_key = os.getenv("GROQ_API_KEY")
             openrouter_key = os.getenv("OPENROUTER_API_KEY")
             
@@ -169,11 +170,14 @@ def apply_openai_free_patches():
                         logger.error(f"[Agent-S] All vision fallbacks failed.")
                         raise e
             else:
-                # Reasoning via Groq with OpenRouter and Local Fallback
+                # Reasoning via Gemini with OpenRouter and Groq Fallback
                 try:
-                    client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
-                    model = os.getenv("PLANNING_MODEL", "llama-3.3-70b-versatile")
-                    logger.info(f"[Agent-S] Routing Reasoning to Groq: {model}")
+                    client = OpenAI(
+                        api_key=gemini_key or openrouter_key, 
+                        base_url="https://generativelanguage.googleapis.com/v1beta/openai/" if gemini_key else "https://openrouter.ai/api/v1"
+                    )
+                    model = "gemini-2.5-flash" if gemini_key else os.getenv("PLANNING_MODEL", "google/gemini-2.0-flash-001")
+                    logger.info(f"[Agent-S] Routing Reasoning to Primary LLM: {model}")
                     
                     target_messages = []
                     for msg in cleaned_messages:
@@ -192,19 +196,19 @@ def apply_openai_free_patches():
                     )
                     return completion.choices[0].message.content
                 except Exception as e:
-                    if "rate_limit" in str(e).lower() or "429" in str(e) or "401" in str(e):
-                        print(f"[Agent-S] Groq/Auth Error ({e}). Trying OpenRouter Fallback...")
+                    if "rate_limit" in str(e).lower() or "429" in str(e) or "401" in str(e) or "402" in str(e) or "error" in str(e).lower():
+                        print(f"[Agent-S] OpenRouter Error ({e}). Trying Groq Fallback...")
                         try:
-                            client = OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
-                            model = os.getenv("PLANNING_MODEL", "llama-3.3-70b-versatile")
+                            client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
+                            model = "llama-3.3-70b-versatile"
                             completion = client.chat.completions.create(
-                                model=f"meta-llama/{model}" if "/" not in model else model,
+                                model=model,
                                 messages=target_messages, temperature=temperature,
                                 max_tokens=max_new_tokens if max_new_tokens else 4096
                             )
                             return completion.choices[0].message.content
                         except Exception as e2:
-                            print(f"[Agent-S] OpenRouter failed ({e2}), trying local Ollama for Reasoning...")
+                            print(f"[Agent-S] Groq failed ({e2}), trying local Ollama for Reasoning...")
                             try:
                                 # Fallback to local Ollama
                                 client = OpenAI(api_key="ollama", base_url="http://localhost:11434/v1")

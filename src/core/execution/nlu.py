@@ -61,13 +61,17 @@ class NLUEngine:
         if self._client:
             return self._client
             
-        groq_key = os.getenv("GROQ_API_KEY")
-        if groq_key:
-            self._client = Groq(api_key=groq_key)
-            self._model = LLM_MODEL
-            print("[NLU] Using Groq API")
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            from openai import OpenAI
+            self._client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=gemini_key
+            )
+            self._model = "gemini-2.5-flash"
+            print(f"[NLU] Using Gemini API (Model: {self._model})")
             return self._client
-            
+
         or_key = os.getenv("OPENROUTER_API_KEY")
         if or_key:
             from openai import OpenAI
@@ -80,7 +84,14 @@ class NLUEngine:
             print(f"[NLU] Using OpenRouter API (Model: {self._model})")
             return self._client
             
-        raise ValueError("No API Key found. Set GROQ_API_KEY or OPENROUTER_API_KEY.")
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key:
+            self._client = Groq(api_key=groq_key)
+            self._model = LLM_MODEL
+            print("[NLU] Using Groq API")
+            return self._client
+            
+        raise ValueError("No API Key found. Set GEMINI_API_KEY, OPENROUTER_API_KEY or GROQ_API_KEY.")
 
     # ─────────────────────────────────────
     # PUBLIC: Main entry point
@@ -108,7 +119,11 @@ class NLUEngine:
             "exchange rate", "currency rate", "gold price", "silver price",
             "crypto", "bitcoin", "market data", "share price",
             "stock average", "closing value", "opening value",
+            "calculate", "standard deviation", "variance", "average", "total",
+            "create a new excel", "create a pptx", "presentation", "powerpoint",
+            "generate script"
         ]
+
         
         web_keywords = [
             "http", "https", "www", ".com", ".org", ".net", ".io", ".dev",
@@ -122,13 +137,13 @@ class NLUEngine:
         
         # Check data retrieval FIRST (stock + Excel = data task, not simple file manipulation)
         import re
-        is_data_task = any(kw in lower_text for kw in data_retrieval_keywords)
+        is_data_task = any(re.search(r'\b' + re.escape(kw) + r'\b', lower_text) for kw in data_retrieval_keywords)
         has_file_target = bool(re.search(r'\b\w+\.(xlsx|xls|csv)\b', lower_text))
         
         if is_data_task:
             category = "DATA_RETRIEVAL"
         # Check for explicit URLs (highest priority for web)
-        elif bool(re.search(r'\b\w+\.(com|org|net|io|dev|edu|gov|co)\b', lower_text)) or any(kw in lower_text for kw in web_keywords):
+        elif bool(re.search(r'\b\w+\.(com|org|net|io|dev|edu|gov|co)\b', lower_text)) or any(re.search(r'\b' + re.escape(kw) + r'\b', lower_text) for kw in web_keywords):
             category = "WEB_AUTOMATION"
         # Then check files so local paths stay as FILE_MANIPULATION
         elif any(kw in lower_text for kw in file_keywords) or "\\" in lower_text:

@@ -19,8 +19,7 @@ export default function Dashboard() {
   const [history, setHistory] = useState<string[]>([]);
   const [lastCommand, setLastCommand] = useState<string>("");
   const [cancelled, setCancelled] = useState(false);
-  const [isBrowserMode, setIsBrowserMode] = useState(false);
-  const [browserUrl, setBrowserUrl] = useState("https://google.com");
+  const [isAssistantMode, setIsAssistantMode] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -169,24 +168,10 @@ export default function Dashboard() {
     }
   };
 
-  const toggleBrowserMode = async () => {
-    const newMode = !isBrowserMode;
-    setIsBrowserMode(newMode);
-    // When turning browser mode OFF, hide the Tauri browser view (if running in Tauri)
-    if (!newMode) {
-      if (typeof window !== "undefined" && (window as any).__TAURI__) {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("hide_browser_view", { visible: false });
-        } catch {
-          // In web/dev mode this import or invoke may fail; ignore silently
-        }
-      }
-    }
-  };
+
 
   return (
-    <main className="min-h-screen bg-background relative overflow-hidden font-sans selection:bg-primary/30 flex flex-col">
+    <main className="min-h-screen bg-background relative font-sans selection:bg-primary/30 flex flex-col">
       {/* Dynamic Background Elements */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[160px] animate-pulse" />
@@ -195,18 +180,20 @@ export default function Dashboard() {
 
       {/* Floating Controls */}
       <div className="fixed top-8 left-8 right-8 flex justify-between items-center z-[100] pointer-events-none">
+
+        {/* Assistant Mode Button (Left) */}
         <div className="pointer-events-auto">
           <button
-            onClick={toggleBrowserMode}
+            onClick={() => setIsAssistantMode(!isAssistantMode)}
             className={cn(
               "flex items-center gap-2.5 px-5 py-2.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all shadow-2xl backdrop-blur-xl border",
-              isBrowserMode
-                ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/50 shadow-emerald-500/20"
+              isAssistantMode
+                ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/50 shadow-blue-500/20"
                 : "bg-secondary text-muted-foreground border-border hover:bg-secondary/80 hover:border-border/80"
             )}
           >
-            <Globe className={cn("w-4 h-4", isBrowserMode && "animate-spin-slow")} />
-            {isBrowserMode ? "Browser Active" : "Browser Mode"}
+            <div className={cn("w-2 h-2 rounded-full", isAssistantMode ? "bg-blue-400 animate-pulse" : "bg-slate-400")} />
+            {isAssistantMode ? "Assistant Active" : "Assistant Mode"}
           </button>
         </div>
 
@@ -310,13 +297,9 @@ export default function Dashboard() {
       </div >
 
       {/* Main Content Area */}
-      <div className="flex-1 w-full max-w-7xl mx-auto flex min-h-0 z-10">
-        <div className="w-full relative overflow-y-auto custom-scrollbar">
-          {isBrowserMode ? (
-            <BrowserViewport url={browserUrl} isModalOpen={false} />
-          ) : (
-            <TimelineFeed steps={steps} onOptionSelect={handleOptionSelect} />
-          )}
+      <div className="w-full max-w-7xl mx-auto z-10 pb-32">
+        <div className="w-full">
+          <TimelineFeed steps={steps} onOptionSelect={handleOptionSelect} />
         </div>
       </div>
       {/* History Sidebar Drawer */}

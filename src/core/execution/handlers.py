@@ -213,7 +213,8 @@ async def handle_action(
                 "exchange rate", "currency", "gold", "silver", "crypto",
                 "bitcoin", "market", "share price"
             ]
-            is_data_task = any(kw in task_lower for kw in data_keywords)
+            import re
+            is_data_task = any(re.search(r'\b' + re.escape(kw) + r'\b', task_lower) for kw in data_keywords)
 
             if is_data_task:
                 tool_used = "Data Retriever"
